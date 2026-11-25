@@ -12,7 +12,7 @@ test-race:
 	go test -race -count=1 ./...
 
 cover:
-	go test -covermode=atomic -coverprofile=coverage.out ./...
+	go test -covermode=atomic -coverprofile=coverage.out .
 	go tool cover -func=coverage.out | tail -1
 
 lint:

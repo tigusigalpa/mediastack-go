@@ -43,8 +43,4 @@ jobs:
           fi
 
       - name: go.mod is tidy
-        run: |
-          go mod tidy
-          if ! git diff --quiet go.mod go.sum 2>/dev/null; then
-            echo "go.mod/go.sum not tidy"; exit 1
-          fi
+        run: go mod tidy -diff
