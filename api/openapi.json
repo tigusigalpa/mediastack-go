@@ -1,0 +1,813 @@
+{
+  "openapi" : "3.0.0",
+  "info" : {
+    "title" : "Mediastack API",
+    "description" : "The mediastack API was built to deliver worldwide news, headlines and blog articles (live and historical) in a lightweight JSON format. Requests to the REST API are made using a straightforward HTTP GET URL structure and can be filtered by keywords, sources, categories, countries, languages and date.",
+    "version" : "1.0.0"
+  },
+  "externalDocs" : {
+    "description" : "Official Mediastack documentation (reference)",
+    "url" : "https://mediastack.com/documentation"
+  },
+  "servers" : [ {
+    "url" : "https://api.mediastack.com",
+    "description" : "Production server"
+  } ],
+  "security" : [ {
+    "ApiKeyAuth" : [ ]
+  } ],
+  "tags" : [ {
+    "name" : "API Endpoints",
+    "description" : "API Endpoints"
+  } ],
+  "paths" : {
+    "/v1/news" : {
+      "get" : {
+        "tags" : [ "API Endpoints" ],
+        "summary" : "Live News.",
+        "description" : "Returns live and historical news articles from thousands of sources worldwide. Filter the result set by keywords, sources, categories, countries, languages and date.",
+        "operationId" : "getNews",
+        "parameters" : [ {
+          "name" : "access_key",
+          "in" : "query",
+          "description" : "Your API access key, which can be found in your account dashboard.",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "sources",
+          "in" : "query",
+          "description" : "Comma-separated list of news sources to include or exclude (prefix a source with a minus to exclude). Example: cnn,bbc,-fox",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "categories",
+          "in" : "query",
+          "description" : "Comma-separated list of news categories to include or exclude. Available values: general, business, entertainment, health, science, sports, technology",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "countries",
+          "in" : "query",
+          "description" : "Comma-separated list of countries (ISO 3166-1 alpha-2 codes) to include or exclude. Example: us,gb,-de",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "languages",
+          "in" : "query",
+          "description" : "Comma-separated list of languages to include or exclude. Example: en,de,-fr",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "keywords",
+          "in" : "query",
+          "description" : "Filter results by one or more keywords. Prepend a keyword with a minus sign to exclude it.",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "date",
+          "in" : "query",
+          "description" : "Filter results by date. Accepts a single date or a range in Y-m-d format (e.g. 2020-01-01 or 2020-01-01,2020-01-31), or one of the named options: today, thisweek, thismonth, last7days, last30days, last3months, yeartodate.",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "sort",
+          "in" : "query",
+          "description" : "Sort order of the results. Available values: published_desc (default), published_asc, popularity",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "default" : "published_desc",
+            "enum" : [ "published_desc", "published_asc", "popularity" ]
+          }
+        }, {
+          "name" : "only_with_image",
+          "in" : "query",
+          "description" : "Set to true to only return articles that include an image.",
+          "required" : false,
+          "schema" : {
+            "type" : "boolean",
+            "default" : false
+          }
+        }, {
+          "name" : "limit",
+          "in" : "query",
+          "description" : "Number of results to return per page (1–100). Default value is 25.",
+          "required" : false,
+          "schema" : {
+            "maximum" : 100,
+            "minimum" : 1,
+            "type" : "integer",
+            "default" : 25
+          }
+        }, {
+          "name" : "offset",
+          "in" : "query",
+          "description" : "Pagination offset (minimum 0). Note: offset + limit must not exceed 10000. Default value is 0.",
+          "required" : false,
+          "schema" : {
+            "maximum" : 10000,
+            "minimum" : 0,
+            "type" : "integer",
+            "default" : 0
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/NewsResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "422" : {
+            "description" : "Validation error — one or more query parameters are invalid."
+          },
+          "429" : {
+            "$ref" : "#/components/responses/RateLimitReached"
+          },
+          "500" : {
+            "$ref" : "#/components/responses/InternalError"
+          },
+          "503" : {
+            "$ref" : "#/components/responses/Maintenance"
+          }
+        }
+      }
+    },
+    "/v1/sources" : {
+      "get" : {
+        "tags" : [ "API Endpoints" ],
+        "summary" : "News Sources.",
+        "description" : "Returns the list of available news sources. Filter the result set by keywords, categories, countries and languages.",
+        "operationId" : "getSources",
+        "parameters" : [ {
+          "name" : "access_key",
+          "in" : "query",
+          "description" : "Your API access key, which can be found in your account dashboard.",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "search",
+          "in" : "query",
+          "description" : "Search keyword(s) to match against source names. Required; the request is rejected without it.",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "categories",
+          "in" : "query",
+          "description" : "Comma-separated list of news categories to include or exclude. Available values: general, business, entertainment, health, science, sports, technology",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "countries",
+          "in" : "query",
+          "description" : "Comma-separated list of countries (ISO 3166-1 alpha-2 codes) to include or exclude. Example: us,gb,-de",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "languages",
+          "in" : "query",
+          "description" : "Comma-separated list of languages to include or exclude. Example: en,de,-fr",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "limit",
+          "in" : "query",
+          "description" : "Number of results to return per page (1–100). Default value is 25.",
+          "required" : false,
+          "schema" : {
+            "maximum" : 100,
+            "minimum" : 1,
+            "type" : "integer",
+            "default" : 25
+          }
+        }, {
+          "name" : "offset",
+          "in" : "query",
+          "description" : "Pagination offset (minimum 0). Note: offset + limit must not exceed 10000. Default value is 0.",
+          "required" : false,
+          "schema" : {
+            "maximum" : 10000,
+            "minimum" : 0,
+            "type" : "integer",
+            "default" : 0
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/SourceResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "$ref" : "#/components/responses/Unauthorized"
+          },
+          "403" : {
+            "$ref" : "#/components/responses/Forbidden"
+          },
+          "404" : {
+            "$ref" : "#/components/responses/NotFound"
+          },
+          "422" : {
+            "description" : "Validation error — the required search parameter is missing or a parameter is invalid."
+          },
+          "429" : {
+            "$ref" : "#/components/responses/RateLimitReached"
+          },
+          "500" : {
+            "$ref" : "#/components/responses/InternalError"
+          },
+          "503" : {
+            "$ref" : "#/components/responses/Maintenance"
+          }
+        }
+      }
+    }
+  },
+  "components" : {
+    "schemas" : {
+      "ApiError" : {
+        "required" : [ "error", "success" ],
+        "type" : "object",
+        "properties" : {
+          "success" : {
+            "type" : "boolean",
+            "example" : false
+          },
+          "error" : {
+            "$ref" : "#/components/schemas/ApiError_error"
+          }
+        },
+        "description" : "Standard apilayer error envelope, shared by every error response."
+      },
+      "Pagination" : {
+        "type" : "object",
+        "properties" : {
+          "limit" : {
+            "type" : "integer"
+          },
+          "offset" : {
+            "type" : "integer"
+          },
+          "count" : {
+            "type" : "integer"
+          },
+          "total" : {
+            "type" : "integer"
+          }
+        }
+      },
+      "PaginatedResponse" : {
+        "type" : "object",
+        "properties" : {
+          "pagination" : {
+            "$ref" : "#/components/schemas/Pagination"
+          },
+          "data" : {
+            "type" : "array",
+            "items" : {
+              "type" : "object"
+            }
+          }
+        }
+      },
+      "Article" : {
+        "type" : "object",
+        "properties" : {
+          "author" : {
+            "type" : "string",
+            "nullable" : true
+          },
+          "title" : {
+            "type" : "string"
+          },
+          "description" : {
+            "type" : "string",
+            "nullable" : true
+          },
+          "url" : {
+            "type" : "string",
+            "format" : "uri"
+          },
+          "source" : {
+            "type" : "string"
+          },
+          "image" : {
+            "type" : "string",
+            "format" : "uri",
+            "nullable" : true
+          },
+          "category" : {
+            "type" : "string"
+          },
+          "language" : {
+            "type" : "string"
+          },
+          "country" : {
+            "type" : "string"
+          },
+          "published_at" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        }
+      },
+      "Source" : {
+        "type" : "object",
+        "properties" : {
+          "code" : {
+            "type" : "string"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "category" : {
+            "type" : "string"
+          },
+          "country" : {
+            "type" : "string"
+          },
+          "language" : {
+            "type" : "string"
+          },
+          "url" : {
+            "type" : "string",
+            "format" : "uri"
+          }
+        }
+      },
+      "NewsResponse" : {
+        "type" : "object",
+        "properties" : {
+          "pagination" : {
+            "$ref" : "#/components/schemas/Pagination"
+          },
+          "data" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/Article"
+            }
+          }
+        },
+        "example" : {
+          "pagination" : {
+            "limit" : 100,
+            "offset" : 0,
+            "count" : 100,
+            "total" : 293
+          },
+          "data" : [ {
+            "author" : "TMZ Staff",
+            "title" : "Rafael Nadal Pulls Out Of U.S. Open Over COVID-19 Concerns",
+            "description" : "Rafael Nadal is officially OUT of the U.S. Open ...",
+            "url" : "https://www.tmz.com/2020/08/04/rafael-nadal-us-open-tennis-covid-19-concerns/",
+            "source" : "TMZ.com",
+            "image" : "https://imagez.tmz.com/...",
+            "category" : "general",
+            "language" : "en",
+            "country" : "us",
+            "published_at" : "2020-08-05T05:47:24+00:00"
+          } ]
+        }
+      },
+      "SourceResponse" : {
+        "type" : "object",
+        "properties" : {
+          "pagination" : {
+            "$ref" : "#/components/schemas/Pagination"
+          },
+          "data" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/Source"
+            }
+          }
+        },
+        "example" : {
+          "pagination" : {
+            "limit" : 100,
+            "offset" : 0,
+            "count" : 100,
+            "total" : 1364
+          },
+          "data" : [ {
+            "code" : "abc-au",
+            "name" : "ABC AU",
+            "category" : "general",
+            "country" : "au",
+            "language" : "en",
+            "url" : "http://abc.net.au/"
+          } ]
+        }
+      },
+      "ApiError_error" : {
+        "required" : [ "code", "type" ],
+        "type" : "object",
+        "properties" : {
+          "code" : {
+            "type" : "integer",
+            "description" : "apilayer numeric error code (the code the API returns in the body, e.g. 101 for an invalid access key — NOT the HTTP status).",
+            "example" : 101
+          },
+          "type" : {
+            "type" : "string",
+            "description" : "Machine-readable error type.",
+            "example" : "invalid_access_key"
+          },
+          "info" : {
+            "type" : "string",
+            "description" : "Human-readable error detail.",
+            "example" : "You have not supplied a valid API Access Key. [Technical Support: support@apilayer.com]"
+          }
+        }
+      }
+    },
+    "responses" : {
+      "Unauthorized" : {
+        "description" : "Unauthorized",
+        "content" : {
+          "application/json" : {
+            "schema" : {
+              "$ref" : "#/components/schemas/ApiError"
+            },
+            "examples" : {
+              "account_on_hold" : {
+                "summary" : "account_on_hold",
+                "value" : {
+                  "success" : false,
+                  "error" : {
+                    "code" : 107,
+                    "type" : "account_on_hold",
+                    "info" : "Your account currently has open invoices and API has been automatically disabled. Please settle your open balance or downgrade to the Free Plan to restore API access. [Support: support@apilayer.com]"
+                  }
+                }
+              },
+              "invalid_access_key" : {
+                "summary" : "invalid_access_key",
+                "value" : {
+                  "success" : false,
+                  "error" : {
+                    "code" : 101,
+                    "type" : "invalid_access_key",
+                    "info" : "You have not supplied a valid API Access Key. [Technical Support: support@apilayer.com]"
+                  }
+                }
+              },
+              "missing_access_key" : {
+                "summary" : "missing_access_key",
+                "value" : {
+                  "success" : false,
+                  "error" : {
+                    "code" : 101,
+                    "type" : "missing_access_key",
+                    "info" : "You have not supplied an API Access Key. [Required format: access_key=YOUR_ACCESS_KEY]"
+                  }
+                }
+              },
+              "inactive_user" : {
+                "summary" : "inactive_user",
+                "value" : {
+                  "success" : false,
+                  "error" : {
+                    "code" : 102,
+                    "type" : "inactive_user",
+                    "info" : "Permission denied - User not active."
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "Forbidden" : {
+        "description" : "Forbidden",
+        "content" : {
+          "application/json" : {
+            "schema" : {
+              "$ref" : "#/components/schemas/ApiError"
+            },
+            "examples" : {
+              "https_access_restricted" : {
+                "summary" : "https_access_restricted",
+                "value" : {
+                  "success" : false,
+                  "error" : {
+                    "code" : 105,
+                    "type" : "https_access_restricted",
+                    "info" : "Access Restricted - Your current Subscription Plan does not support HTTPS Encryption."
+                  }
+                }
+              },
+              "function_access_restricted" : {
+                "summary" : "function_access_restricted",
+                "value" : {
+                  "success" : false,
+                  "error" : {
+                    "code" : 105,
+                    "type" : "function_access_restricted",
+                    "info" : "Access Restricted - Your current Subscription Plan does not support this API Function."
+                  }
+                }
+              },
+              "api_access_blocked" : {
+                "summary" : "api_access_blocked",
+                "value" : {
+                  "success" : false,
+                  "error" : {
+                    "code" : 104,
+                    "type" : "api_access_blocked",
+                    "info" : "Your API access has been temporarily disabled. Please upgrade your Subscription Plan or contact support."
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "NotFound" : {
+        "description" : "Not Found",
+        "content" : {
+          "application/json" : {
+            "schema" : {
+              "$ref" : "#/components/schemas/ApiError"
+            },
+            "examples" : {
+              "invalid_api_function" : {
+                "summary" : "invalid_api_function",
+                "value" : {
+                  "success" : false,
+                  "error" : {
+                    "code" : 103,
+                    "type" : "invalid_api_function",
+                    "info" : "This API Function does not exist."
+                  }
+                }
+              },
+              "404_not_found" : {
+                "summary" : "404_not_found",
+                "value" : {
+                  "success" : false,
+                  "error" : {
+                    "code" : 404,
+                    "type" : "404_not_found",
+                    "info" : "404 - The requested resource could not be found. Please try again or contact support."
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "RateLimitReached" : {
+        "description" : "Too Many Requests",
+        "content" : {
+          "application/json" : {
+            "schema" : {
+              "$ref" : "#/components/schemas/ApiError"
+            },
+            "examples" : {
+              "usage_limit_reached" : {
+                "summary" : "usage_limit_reached",
+                "value" : {
+                  "success" : false,
+                  "error" : {
+                    "code" : 104,
+                    "type" : "usage_limit_reached",
+                    "info" : "Your monthly usage limit has been reached. Please upgrade your Subscription Plan."
+                  }
+                }
+              },
+              "daily_usage_limit_reached" : {
+                "summary" : "daily_usage_limit_reached",
+                "value" : {
+                  "success" : false,
+                  "error" : {
+                    "code" : 104,
+                    "type" : "daily_usage_limit_reached",
+                    "info" : "Your daily usage limit has been reached. Please try again tomorrow or upgrade your subscription plan."
+                  }
+                }
+              },
+              "fair_use_limit_reached" : {
+                "summary" : "fair_use_limit_reached",
+                "value" : {
+                  "success" : false,
+                  "error" : {
+                    "code" : 104,
+                    "type" : "fair_use_limit_reached",
+                    "info" : "Your fair use limit has been reached. [Please contact support: support@apilayer.com]"
+                  }
+                }
+              },
+              "rate_limit_reached" : {
+                "summary" : "rate_limit_reached",
+                "value" : {
+                  "success" : false,
+                  "error" : {
+                    "code" : 106,
+                    "type" : "rate_limit_reached",
+                    "info" : "You have exceeded the maximum rate limitation allowed on your subscription plan. Please refer to the \"Rate Limits\" section of the API Documentation for details. "
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "InternalError" : {
+        "description" : "Internal Server Error",
+        "content" : {
+          "application/json" : {
+            "schema" : {
+              "$ref" : "#/components/schemas/ApiError"
+            },
+            "examples" : {
+              "internal_error" : {
+                "summary" : "internal_error",
+                "value" : {
+                  "success" : false,
+                  "error" : {
+                    "code" : 0,
+                    "type" : "internal_error",
+                    "info" : "An error has occured. [Technical Support: support@apilayer.com]"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "Maintenance" : {
+        "description" : "Service Unavailable",
+        "content" : {
+          "application/json" : {
+            "schema" : {
+              "$ref" : "#/components/schemas/ApiError"
+            },
+            "examples" : {
+              "maintenance_mode" : {
+                "summary" : "maintenance_mode",
+                "value" : {
+                  "success" : false,
+                  "error" : {
+                    "code" : 503,
+                    "type" : "maintenance_mode",
+                    "info" : ""
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "parameters" : {
+      "AccessKey" : {
+        "name" : "access_key",
+        "in" : "query",
+        "description" : "Your API access key, which can be found in your account dashboard.",
+        "required" : true,
+        "schema" : {
+          "type" : "string"
+        }
+      },
+      "Keywords" : {
+        "name" : "keywords",
+        "in" : "query",
+        "description" : "Filter results by one or more keywords. Prepend a keyword with a minus sign to exclude it.",
+        "required" : false,
+        "schema" : {
+          "type" : "string"
+        }
+      },
+      "Sources" : {
+        "name" : "sources",
+        "in" : "query",
+        "description" : "Comma-separated list of news sources to include or exclude (prefix a source with a minus to exclude). Example: cnn,bbc,-fox",
+        "required" : false,
+        "schema" : {
+          "type" : "string"
+        }
+      },
+      "Categories" : {
+        "name" : "categories",
+        "in" : "query",
+        "description" : "Comma-separated list of news categories to include or exclude. Available values: general, business, entertainment, health, science, sports, technology",
+        "required" : false,
+        "schema" : {
+          "type" : "string"
+        }
+      },
+      "Countries" : {
+        "name" : "countries",
+        "in" : "query",
+        "description" : "Comma-separated list of countries (ISO 3166-1 alpha-2 codes) to include or exclude. Example: us,gb,-de",
+        "required" : false,
+        "schema" : {
+          "type" : "string"
+        }
+      },
+      "Languages" : {
+        "name" : "languages",
+        "in" : "query",
+        "description" : "Comma-separated list of languages to include or exclude. Example: en,de,-fr",
+        "required" : false,
+        "schema" : {
+          "type" : "string"
+        }
+      },
+      "Sort" : {
+        "name" : "sort",
+        "in" : "query",
+        "description" : "Sort order of the results. Available values: published_desc (default), published_asc, popularity",
+        "required" : false,
+        "schema" : {
+          "type" : "string",
+          "default" : "published_desc",
+          "enum" : [ "published_desc", "published_asc", "popularity" ]
+        }
+      },
+      "Date" : {
+        "name" : "date",
+        "in" : "query",
+        "description" : "Filter results by date. Accepts a single date or a range in Y-m-d format (e.g. 2020-01-01 or 2020-01-01,2020-01-31), or one of the named options: today, thisweek, thismonth, last7days, last30days, last3months, yeartodate.",
+        "required" : false,
+        "schema" : {
+          "type" : "string"
+        }
+      },
+      "Limit" : {
+        "name" : "limit",
+        "in" : "query",
+        "description" : "Number of results to return per page (1–100). Default value is 25.",
+        "required" : false,
+        "schema" : {
+          "maximum" : 100,
+          "minimum" : 1,
+          "type" : "integer",
+          "default" : 25
+        }
+      },
+      "Offset" : {
+        "name" : "offset",
+        "in" : "query",
+        "description" : "Pagination offset (minimum 0). Note: offset + limit must not exceed 10000. Default value is 0.",
+        "required" : false,
+        "schema" : {
+          "maximum" : 10000,
+          "minimum" : 0,
+          "type" : "integer",
+          "default" : 0
+        }
+      }
+    },
+    "securitySchemes" : {
+      "ApiKeyAuth" : {
+        "type" : "apiKey",
+        "name" : "access_key",
+        "in" : "query"
+      }
+    }
+  }
+}
