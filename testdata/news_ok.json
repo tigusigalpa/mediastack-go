@@ -1,0 +1,29 @@
+{
+  "pagination": { "limit": 25, "offset": 0, "count": 2, "total": 10000 },
+  "data": [
+    {
+      "author": "Jeremy Hutson",
+      "title": "TMZ's Harvey Levin talks about being a lawyer in the entertainment industry",
+      "description": "Harvey Levin discusses how his legal background helped him build TMZ.",
+      "url": "https://www.example.com/articles/tmz-harvey-levin",
+      "source": "TMZ.com",
+      "image": "https://www.example.com/images/tmz.jpg",
+      "category": "entertainment",
+      "language": "en",
+      "country": "us",
+      "published_at": "2020-08-05T05:47:24+00:00"
+    },
+    {
+      "author": null,
+      "title": "Markets rally on stimulus hopes",
+      "description": "Stocks climbed as investors welcomed the new package.",
+      "url": "https://www.example.com/articles/markets-rally",
+      "source": "Business Wire",
+      "image": null,
+      "category": "business",
+      "language": "en",
+      "country": "us",
+      "published_at": "2020-08-05T06:01:00Z"
+    }
+  ]
+}

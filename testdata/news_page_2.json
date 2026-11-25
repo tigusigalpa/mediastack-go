@@ -1,0 +1,17 @@
+{
+  "pagination": { "limit": 1, "offset": 1, "count": 1, "total": 3 },
+  "data": [
+    {
+      "author": "C",
+      "title": "Second page article",
+      "description": "d",
+      "url": "https://example.com/3",
+      "source": "s",
+      "image": null,
+      "category": "general",
+      "language": "en",
+      "country": "us",
+      "published_at": "2021-03-05T00:00:00Z"
+    }
+  ]
+}

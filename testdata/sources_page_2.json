@@ -1,0 +1,13 @@
+{
+  "pagination": { "limit": 1, "offset": 1, "count": 1, "total": 2 },
+  "data": [
+    {
+      "id": "bbc",
+      "name": "BBC",
+      "category": "general",
+      "country": "gb",
+      "language": "en",
+      "url": "https://www.bbc.com/"
+    }
+  ]
+}

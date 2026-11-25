@@ -1,0 +1,21 @@
+{
+  "pagination": { "limit": 100, "offset": 0, "count": 2, "total": 1364 },
+  "data": [
+    {
+      "id": "abc-au",
+      "name": "ABC AU",
+      "category": "general",
+      "country": "au",
+      "language": "en",
+      "url": "http://abc.net.au/"
+    },
+    {
+      "id": "abc-news",
+      "name": "ABC News",
+      "category": "general",
+      "country": "us",
+      "language": "en",
+      "url": "https://abcnews.go.com/"
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "pagination": { "limit": 25, "offset": 0, "count": 2, "total": 2 },
+  "data": [
+    {
+      "author": "A",
+      "title": "Broken date",
+      "description": "d",
+      "url": "https://example.com/1",
+      "source": "s",
+      "image": null,
+      "category": "general",
+      "language": "en",
+      "country": "us",
+      "published_at": "not a date"
+    },
+    {
+      "author": "B",
+      "title": "Good date",
+      "description": "d",
+      "url": "https://example.com/2",
+      "source": "s",
+      "image": null,
+      "category": "general",
+      "language": "en",
+      "country": "us",
+      "published_at": "2021-03-04 10:20:30"
+    }
+  ]
+}

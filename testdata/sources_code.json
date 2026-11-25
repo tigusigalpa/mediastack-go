@@ -1,0 +1,13 @@
+{
+  "pagination": { "limit": 100, "offset": 0, "count": 1, "total": 1364 },
+  "data": [
+    {
+      "code": "abc-au",
+      "name": "ABC AU",
+      "category": "general",
+      "country": "au",
+      "language": "en",
+      "url": "http://abc.net.au/"
+    }
+  ]
+}

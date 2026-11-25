@@ -1,0 +1,8 @@
+{
+  "success": false,
+  "error": {
+    "code": 503,
+    "type": "maintenance_mode",
+    "info": ""
+  }
+}

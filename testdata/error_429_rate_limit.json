@@ -1,0 +1,8 @@
+{
+  "success": false,
+  "error": {
+    "code": 106,
+    "type": "rate_limit_reached",
+    "info": "You have exceeded the maximum rate limitation allowed on your subscription plan."
+  }
+}
