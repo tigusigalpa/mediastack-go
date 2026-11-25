@@ -28,7 +28,7 @@ jobs:
           echo "total coverage: ${total}%"
           awk -v t="$total" 'BEGIN { if (t < 90) { exit 1 } }'
 
-      - uses: codecov/codecov-action@v4
+      - uses: codecov/codecov-action@v7
         with:
           file: coverage.out
           fail_ci_if_error: true
