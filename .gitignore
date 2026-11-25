@@ -1,0 +1,9 @@
+coverage.out
+coverage.html
+*.test
+*.prof
+*.exe
+.idea/
+.vscode/
+.DS_Store
+dist/

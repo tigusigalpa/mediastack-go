@@ -1,0 +1,53 @@
+name: Bug report
+description: Report a defect in the SDK
+labels: [bug]
+body:
+  - type: input
+    id: sdk-version
+    attributes:
+      label: SDK version
+      description: For example v1.0.0, or the commit hash
+      placeholder: v1.0.0
+    validations:
+      required: true
+
+  - type: input
+    id: go-version
+    attributes:
+      label: Go version
+      description: Output of `go version`
+      placeholder: go1.27.4 windows/amd64
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: Windows 11 / macOS 15 / Ubuntu 24.04
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproducible example
+      description: The smallest program that demonstrates the problem. NEVER include your API access key.
+      render: go
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include the full error text if there is one. Access keys are automatically redacted by the SDK, but double-check before posting.
+    validations:
+      required: true
