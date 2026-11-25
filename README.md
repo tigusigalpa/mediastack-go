@@ -1,4 +1,4 @@
-# Mediastack Go
+# Mediastack Golang Client/SDK/Library
 
 ![Mediastack Go](https://i.postimg.cc/qBX9P6sn/mediastack-go-hero-banner.jpg)
 
