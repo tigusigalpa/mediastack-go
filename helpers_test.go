@@ -9,6 +9,22 @@ import (
 	"time"
 )
 
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func handlerTransport(handler http.HandlerFunc) *http.Client {
+	return &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		w := httptest.NewRecorder()
+		handler(w, req)
+		resp := w.Result()
+		resp.Request = req
+		return resp, nil
+	})}
+}
+
 // fixture reads a JSON fixture from testdata.
 func fixture(t *testing.T, name string) []byte {
 	t.Helper()

@@ -151,7 +151,7 @@ func TestNewClientFromEnv(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.key != "env-key" {
-		t.Fatalf("key = %q", c.key)
+	if *c.key != "env-key" {
+		t.Fatalf("key = %q", *c.key)
 	}
 }

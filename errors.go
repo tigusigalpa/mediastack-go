@@ -33,6 +33,10 @@ var (
 	// MaxPaginationWindow (10,000) enforced by the API.
 	ErrMaxOffset = errors.New("mediastack: pagination window exceeded")
 
+	// ErrInvalidPagination is returned when a response claims more results
+	// are available without advancing the page offset.
+	ErrInvalidPagination = errors.New("mediastack: pagination did not advance")
+
 	// ErrResponseTooLarge is returned when a response body exceeds the
 	// configured size limit (WithMaxResponseBytes).
 	ErrResponseTooLarge = errors.New("mediastack: response body exceeds size limit")
@@ -89,10 +93,8 @@ type APIError struct {
 	// HTTPStatus is the HTTP status code of the response.
 	HTTPStatus int
 
-	// Code is the machine-readable error type: error.type when present,
-	// otherwise the string form of error.code, otherwise derived from
-	// the HTTP status. It is the primary key for error handling; never
-	// switch on NumericCode, which is ambiguous.
+	// Code is error.type, a string error.code, or a known numeric code's
+	// name. It can be empty when only the HTTP status is available.
 	Code string
 
 	// NumericCode is the apilayer numeric error code when the response
@@ -141,11 +143,11 @@ type rawErrorEnvelope struct {
 // decodeAPIError normalizes an error response body into *APIError.
 // Non-JSON bodies (for example Cloudflare HTML on 403) still produce a
 // usable error built from the status line.
-func decodeAPIError(status int, header http.Header, body []byte) *APIError {
+func decodeAPIError(status int, id string, body []byte, key string) *APIError {
 	e := &APIError{
 		HTTPStatus: status,
-		RequestID:  requestID(header),
-		Body:       redactBody(truncate(body, apiErrorBodyLimit)),
+		RequestID:  id,
+		Body:       []byte(truncate(redactKey(string(body), key), apiErrorBodyLimit)),
 	}
 	var env rawErrorEnvelope
 	if json.Unmarshal(body, &env) != nil || env.Error == nil {
@@ -165,10 +167,15 @@ func decodeAPIError(status int, header http.Header, body []byte) *APIError {
 		e.Code = re.Type
 	case code != "":
 		e.Code = code
-	default:
-		e.Code = codeForNumeric(numeric)
+	case numeric != nil:
+		e.Code = codeForNumeric(*numeric)
 	}
-	e.NumericCode = numeric
+	if numeric != nil {
+		e.NumericCode = *numeric
+	}
+	if sentinelFor(e.Code, 0) == nil {
+		e.Code = redactKey(e.Code, key)
+	}
 
 	e.Message = re.Message
 	if e.Message == "" {
@@ -179,37 +186,29 @@ func decodeAPIError(status int, header http.Header, body []byte) *APIError {
 	}
 	// A misbehaving upstream can echo the access key inside the message;
 	// scrub it so error strings never leak credentials.
-	e.Message = redactKey(e.Message, "")
-	e.Context = re.Context
-	for _, vs := range e.Context {
-		for i := range vs {
-			vs[i] = redactKey(vs[i], "")
+	e.Message = redactKey(e.Message, key)
+	if len(re.Context) > 0 {
+		e.Context = make(map[string][]string, len(re.Context))
+		for field, values := range re.Context {
+			for i, value := range values {
+				values[i] = redactKey(value, key)
+			}
+			e.Context[redactKey(field, key)] = values
 		}
 	}
 	return e
 }
 
 // parseRawCode reads error.code which may be a JSON string or number.
-func parseRawCode(raw json.RawMessage) (code string, numeric int) {
-	if len(raw) == 0 || string(raw) == "null" {
-		return "", 0
+func parseRawCode(raw json.RawMessage) (code string, numeric *int) {
+	if len(raw) > 0 && raw[0] == '"' {
+		_ = json.Unmarshal(raw, &code)
+		return code, nil
 	}
-	if raw[0] == '"' {
-		var s string
-		if json.Unmarshal(raw, &s) == nil {
-			return s, 0
-		}
-		return "", 0
+	if json.Unmarshal(raw, &numeric) != nil {
+		return "", nil
 	}
-	var n int
-	if json.Unmarshal(raw, &n) == nil {
-		return "", n
-	}
-	var f float64
-	if json.Unmarshal(raw, &f) == nil {
-		return "", int(f)
-	}
-	return "", 0
+	return "", numeric
 }
 
 // codeForNumeric maps unambiguous numeric codes to their documented
@@ -271,13 +270,16 @@ func (e *APIError) Error() string {
 // HTTP status), enabling errors.Is checks like
 // errors.Is(err, ErrRateLimitReached).
 func (e *APIError) Unwrap() error {
+	if e.Code == "" && e.NumericCode == 104 && e.HTTPStatus == http.StatusTooManyRequests {
+		return ErrUsageLimitReached
+	}
 	return sentinelFor(e.Code, e.HTTPStatus)
 }
 
 // Is lets errors.Is match sentinels directly even when Unwrap is
 // shadowed by wrapping.
 func (e *APIError) Is(target error) bool {
-	return sentinelFor(e.Code, e.HTTPStatus) == target
+	return e.Unwrap() == target
 }
 
 // Temporary reports whether the failure is worth retrying: true for
@@ -286,7 +288,7 @@ func (e *APIError) Is(target error) bool {
 // values; use IsTemporary for a check that covers both.
 func (e *APIError) Temporary() bool {
 	if e.HTTPStatus == http.StatusTooManyRequests {
-		return e.Code == "rate_limit_reached" || e.Code == ""
+		return e.Code == "rate_limit_reached" || (e.Code == "" && e.NumericCode != 104)
 	}
 	return e.HTTPStatus >= 500
 }

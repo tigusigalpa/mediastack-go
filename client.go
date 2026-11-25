@@ -55,11 +55,11 @@ type Client struct {
 	// Sources provides access to GET /v1/sources: source discovery.
 	Sources *SourcesService
 
-	key       string
-	hc        *http.Client
-	ownClient bool
-	cfg       config
-	limiter   *limiter
+	key          *string // Keep the credential out of fmt's struct dumps.
+	hc           *http.Client
+	ownTransport bool
+	cfg          config
+	limiter      *limiter
 
 	mu   sync.RWMutex
 	last RateLimit
@@ -85,18 +85,21 @@ func NewClient(accessKey string, opts ...Option) (*Client, error) {
 		}
 	}
 
-	hc := cfg.httpClient
+	hc := &http.Client{Timeout: cfg.timeout}
 	own := false
-	if hc == nil {
-		hc = &http.Client{Timeout: cfg.timeout}
+	if cfg.httpClient != nil {
+		*hc = *cfg.httpClient
+	} else if transport, ok := http.DefaultTransport.(*http.Transport); ok {
+		hc.Transport = transport.Clone()
 		own = true
 	}
+	hc.CheckRedirect = checkRedirect(hc.CheckRedirect)
 
 	c := &Client{
-		key:       key,
-		hc:        hc,
-		ownClient: own,
-		cfg:       cfg,
+		key:          &key,
+		hc:           hc,
+		ownTransport: own,
+		cfg:          cfg,
 	}
 	if cfg.ratePerSecond > 0 {
 		c.limiter = newLimiter(cfg.ratePerSecond, cfg.rateBurst, cfg.clock, cfg.sleep)
@@ -113,9 +116,8 @@ func NewClientFromEnv(opts ...Option) (*Client, error) {
 	return NewClient(os.Getenv(EnvAccessKey), opts...)
 }
 
-// RateLimit reports the quota information carried by the most recent
-// response. It returns a zero value when no response has been received
-// yet or the response had no quota headers.
+// RateLimit reports the last quota snapshot received from the API.
+// It returns a zero value until a response supplies quota headers.
 func (c *Client) RateLimit() RateLimit {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -127,10 +129,29 @@ func (c *Client) RateLimit() RateLimit {
 // WithHTTPClient), Close does nothing and returns nil: ownership of
 // that client stays with the caller.
 func (c *Client) Close() error {
-	if c.ownClient {
+	if c.ownTransport {
 		c.hc.CloseIdleConnections()
 	}
 	return nil
+}
+
+// checkRedirect only allows redirects within the configured request origin.
+// Go's default Referer includes the previous request's query string.
+func checkRedirect(custom func(*http.Request, []*http.Request) error) func(*http.Request, []*http.Request) error {
+	return func(req *http.Request, via []*http.Request) error {
+		first := via[0].URL
+		if req.URL.Scheme != first.Scheme || !strings.EqualFold(req.URL.Host, first.Host) || req.URL.User != nil {
+			return http.ErrUseLastResponse
+		}
+		req.Header.Del("Referer")
+		if custom != nil {
+			return custom(req, via)
+		}
+		if len(via) >= 10 {
+			return errors.New("stopped after 10 redirects")
+		}
+		return nil
+	}
 }
 
 // buildURL assembles the request URL: base + /v1/ + path + query. The
@@ -151,13 +172,17 @@ func (c *Client) buildURL(path string, values url.Values) string {
 // response size cap and normalizes API errors. It returns the response
 // body on success.
 func (c *Client) do(ctx context.Context, path string, q url.Values) ([]byte, ResponseMeta, error) {
+	if ctx == nil {
+		return nil, ResponseMeta{}, errors.New("mediastack: context must not be nil")
+	}
 	values := make(url.Values, len(q)+1)
 	for k, vs := range q {
 		cp := make([]string, len(vs))
 		copy(cp, vs)
 		values[k] = cp
 	}
-	values.Set("access_key", c.key)
+	key := *c.key
+	values.Set("access_key", key)
 	rawURL := c.buildURL(path, values)
 
 	policy := c.cfg.retry
@@ -177,7 +202,7 @@ func (c *Client) do(ctx context.Context, path string, q url.Values) ([]byte, Res
 		}
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 		if err != nil {
-			return nil, meta, fmt.Errorf("mediastack: build request: %w", err)
+			return nil, meta, fmt.Errorf("mediastack: build request: %w", sanitizeError(err, key))
 		}
 		req.Header.Set("User-Agent", c.cfg.userAgent)
 		req.Header.Set("Accept", "application/json")
@@ -185,10 +210,10 @@ func (c *Client) do(ctx context.Context, path string, q url.Values) ([]byte, Res
 		start := c.cfg.clock()
 		resp, err := c.hc.Do(req)
 		meta.Attempts = attempt
-		meta.Duration += c.cfg.clock().Sub(start)
 
 		if err != nil {
-			err = sanitizeError(err, c.key)
+			meta.Duration += c.cfg.clock().Sub(start)
+			err = sanitizeError(err, key)
 			if !c.shouldRetry(policy, nil, err) || attempt == policy.MaxAttempts {
 				return nil, meta, fmt.Errorf("mediastack: request failed: %w", err)
 			}
@@ -202,22 +227,24 @@ func (c *Client) do(ctx context.Context, path string, q url.Values) ([]byte, Res
 
 		body, readErr := io.ReadAll(io.LimitReader(resp.Body, c.cfg.maxResponseBytes+1))
 		_ = resp.Body.Close()
-		if readErr != nil {
-			return nil, meta, fmt.Errorf("mediastack: read response body: %w", sanitizeError(readErr, c.key))
-		}
-		if int64(len(body)) > c.cfg.maxResponseBytes {
-			return nil, meta, fmt.Errorf("%w: %d byte limit", ErrResponseTooLarge, c.cfg.maxResponseBytes)
-		}
 		meta.StatusCode = resp.StatusCode
-		meta.RequestID = requestID(resp.Header)
+		meta.RequestID = redactKey(requestID(resp.Header), key)
 		meta.FetchedAt = c.cfg.clock()
+		meta.Duration += meta.FetchedAt.Sub(start)
 		meta.RateLimit = parseRateLimit(resp.Header)
 		c.storeRateLimit(meta.RateLimit)
 		c.logResponse(req.URL, resp.StatusCode, meta, attempt)
 
+		if readErr != nil {
+			return nil, meta, fmt.Errorf("mediastack: read response body: %w", sanitizeError(readErr, key))
+		}
+		if int64(len(body)) > c.cfg.maxResponseBytes {
+			return nil, meta, fmt.Errorf("%w: %d byte limit", ErrResponseTooLarge, c.cfg.maxResponseBytes)
+		}
+
 		if mt := mediaType(resp.Header); mt != "" && mt != "application/json" {
 			c.cfg.logger.Warn("mediastack: unexpected content type",
-				"content_type", mt,
+				"content_type", redactKey(mt, key),
 				"status", resp.StatusCode,
 				"request_id", meta.RequestID,
 			)
@@ -230,7 +257,7 @@ func (c *Client) do(ctx context.Context, path string, q url.Values) ([]byte, Res
 			return body, meta, nil
 		}
 
-		apiErr := decodeAPIError(resp.StatusCode, resp.Header, body)
+		apiErr := decodeAPIError(resp.StatusCode, meta.RequestID, body, key)
 		apiErr.RetryAfter = parseRetryAfter(resp.Header.Get("Retry-After"), c.cfg.clock())
 
 		if !c.shouldRetry(policy, resp, apiErr) || attempt == policy.MaxAttempts {
@@ -292,7 +319,7 @@ func safeObserve(fn func(RateLimit), rl RateLimit) {
 func (c *Client) logResponse(u *url.URL, status int, meta ResponseMeta, attempt int) {
 	attrs := []any{
 		"method", http.MethodGet,
-		"url", redactURL(u),
+		"url", redactKey(redactURL(u), *c.key),
 		"status", status,
 		"attempt", attempt,
 		"duration_ms", meta.Duration.Milliseconds(),
@@ -307,12 +334,12 @@ func (c *Client) logResponse(u *url.URL, status int, meta ResponseMeta, attempt 
 	c.cfg.logger.Debug("mediastack: response", attrs...)
 }
 
-// logResponse emits a Warn record before a retry.
+// logRetry emits a Warn record before a retry.
 func (c *Client) logRetry(attempt int, delay time.Duration, cause error) {
 	c.cfg.logger.Warn("mediastack: retrying request",
 		"attempt", attempt+1,
 		"delay_ms", delay.Milliseconds(),
-		"reason", redactKey(cause.Error(), c.key),
+		"reason", cause.Error(),
 	)
 }
 
@@ -330,15 +357,30 @@ func mediaType(h http.Header) string {
 	return mt
 }
 
-// sanitizeError rewrites the URL embedded in *url.Error values so the
-// access key never leaks through err.Error(), while keeping
-// errors.As(err, *url.Error) and errors.Is(err, ctx errors) working.
+// sanitizeError redacts request and transport error messages while retaining
+// their error chain for classification.
 func sanitizeError(err error, key string) error {
 	var ue *url.Error
 	if errors.As(err, &ue) {
 		cp := *ue
 		cp.URL = redactKey(ue.URL, key)
+		cp.Err = sanitizeError(ue.Err, key)
 		return &cp
+	}
+	message := err.Error()
+	if safe := redactKey(message, key); safe != message {
+		return &redactedError{message: safe, cause: err}
 	}
 	return err
 }
+
+type redactedError struct {
+	message string
+	cause   error
+}
+
+func (e *redactedError) Error() string { return e.message }
+func (e *redactedError) Unwrap() error { return e.cause }
+
+// Timeout preserves the result of url.Error.Timeout after sanitizing its cause.
+func (e *redactedError) Timeout() bool { return IsTimeout(e.cause) }

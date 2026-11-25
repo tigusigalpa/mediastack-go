@@ -240,11 +240,11 @@ type ResponseMeta struct {
 	// first one.
 	Attempts int
 
-	// Duration is the total time spent in HTTP round trips across all
-	// attempts. It excludes retry backoff and limiter waits.
+	// Duration is the time spent in HTTP attempts, including reading
+	// response bodies. It excludes retry backoff and limiter waits.
 	Duration time.Duration
 
-	// FetchedAt is the moment the final response was received, in the
+	// FetchedAt is the time the final response body was read, in the
 	// client's clock (see WithClock).
 	FetchedAt time.Time
 

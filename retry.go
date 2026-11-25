@@ -1,6 +1,7 @@
 package mediastack
 
 import (
+	"math"
 	"math/rand/v2"
 	"net/http"
 	"strconv"
@@ -13,10 +14,9 @@ import (
 // reason automatic retries are safe here: repeating a failed request
 // never mutates server state.
 //
-// The default policy retries network failures, HTTP 500/502/503/504 and
-// the rate_limit_reached variant of HTTP 429. The quota variants of 429
-// (usage_limit_reached, daily_usage_limit_reached, fair_use_limit_reached)
-// and every other 4xx are never retried: waiting cannot fix them.
+// The default policy retries eligible transport errors and HTTP 5xx.
+// For HTTP 429 it retries rate_limit_reached and unclassified 429 responses.
+// Recognized quota errors and other 4xx responses return immediately.
 type RetryPolicy struct {
 	// MaxAttempts is the total number of attempts including the first
 	// one. The default is 3.
@@ -35,10 +35,9 @@ type RetryPolicy struct {
 	// [1-Jitter, 1+Jitter]. The default is 0.2.
 	Jitter float64
 
-	// RetryOn, when set, replaces the built-in retry decision. It
-	// receives the response (nil on transport failure) and the error
-	// (nil when the response status is 2xx; *APIError for other
-	// statuses; the transport error otherwise).
+	// RetryOn, when set, replaces the retry decision for transport errors
+	// and non-2xx responses. The response is nil on transport failure.
+	// For non-2xx responses, err is an *APIError.
 	RetryOn func(resp *http.Response, err error) bool
 }
 
@@ -77,26 +76,22 @@ func (p RetryPolicy) withDefaults() RetryPolicy {
 // backoff computes the delay before retry number n (1-based): base
 // doubled each attempt, capped at MaxDelay, then randomized by Jitter.
 func (p RetryPolicy) backoff(n int) time.Duration {
-	d := p.BaseDelay
-	for i := 1; i < n; i++ {
-		d *= 2
-		if d >= p.MaxDelay {
+	d := min(p.BaseDelay, p.MaxDelay)
+	for i := 1; i < n && d < p.MaxDelay; i++ {
+		if d > p.MaxDelay/2 {
 			d = p.MaxDelay
 			break
 		}
-	}
-	if d > p.MaxDelay {
-		d = p.MaxDelay
+		d *= 2
 	}
 	if p.Jitter > 0 && d > 0 {
-		factor := 1 + (rand.Float64()*2-1)*p.Jitter //nolint:gosec // backoff jitter is not security-sensitive
-		d = time.Duration(float64(d) * factor)
-	}
-	if d < 0 {
-		d = 0
-	}
-	if d > p.MaxDelay {
-		d = p.MaxDelay
+		//nolint:gosec // Retry jitter only needs to spread requests over time.
+		factor := 1 + (rand.Float64()*2-1)*p.Jitter
+		jittered := float64(d) * factor
+		if jittered >= float64(p.MaxDelay) {
+			return p.MaxDelay
+		}
+		d = time.Duration(jittered)
 	}
 	return d
 }
@@ -109,9 +104,12 @@ func parseRetryAfter(v string, now time.Time) time.Duration {
 	if v == "" {
 		return 0
 	}
-	if secs, err := strconv.Atoi(v); err == nil {
+	if secs, err := strconv.ParseInt(v, 10, 64); err == nil {
 		if secs < 0 {
 			return 0
+		}
+		if secs > math.MaxInt64/int64(time.Second) {
+			return time.Duration(math.MaxInt64)
 		}
 		return time.Duration(secs) * time.Second
 	}

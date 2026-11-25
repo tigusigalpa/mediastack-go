@@ -6,9 +6,64 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"slices"
 	"sync/atomic"
 	"testing"
 )
+
+func TestPagingUsesExtraOffsetAndFinishesPartialWindow(t *testing.T) {
+	extra := url.Values{"offset": {"9985"}, "limit": {"10"}}
+	var pages []string
+	hc := handlerTransport(func(w http.ResponseWriter, req *http.Request) {
+		query := req.URL.Query()
+		offset, limit := query.Get("offset"), query.Get("limit")
+		pages = append(pages, offset+"/"+limit)
+		if len(pages) > 2 {
+			t.Error("iterator requested a page outside the window")
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		fmt.Fprintf(w, `{"pagination":{"offset":%s,"count":%s,"total":10001},"data":[{"title":"example"}]}`, offset, limit)
+	})
+	client, err := NewClient("paging-key", WithHTTPClient(hc), WithNoRetry())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var terminalError error
+	for _, err := range client.News.Iter(context.Background(), &NewsParams{Extra: extra}) {
+		if err != nil {
+			terminalError = err
+		}
+	}
+	if !slices.Equal(pages, []string{"9985/10", "9995/5"}) || !errors.Is(terminalError, ErrMaxOffset) {
+		t.Fatalf("pages = %v, terminal error = %v", pages, terminalError)
+	}
+	if extra.Get("offset") != "9985" || extra.Get("limit") != "10" {
+		t.Fatalf("iterator modified Extra: %v", extra)
+	}
+}
+
+func TestPagingStopsWhenOffsetDoesNotAdvance(t *testing.T) {
+	var calls int
+	hc := handlerTransport(func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		if calls > 1 {
+			t.Error("stalled offset caused another request")
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		w.Write([]byte(`{"pagination":{"offset":0,"count":0,"total":10},"data":[]}`))
+	})
+	client, err := NewClient("paging-key", WithHTTPClient(hc), WithNoRetry())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.News.Collect(context.Background(), nil, 10)
+	if !errors.Is(err, ErrInvalidPagination) || calls != 1 {
+		t.Fatalf("calls=%d err=%v", calls, err)
+	}
+}
 
 func TestPaginationMethods(t *testing.T) {
 	p := Pagination{Limit: 25, Offset: 50, Count: 25, Total: 120}

@@ -4,7 +4,7 @@ package mediastack
 // constant, so release builds can override it with:
 //
 //	go build -ldflags "-X github.com/tigusigalpa/mediastack-go.Version=1.2.3"
-var Version = "1.0.0"
+var Version = "1.0.1"
 
 // UserAgent returns the value sent in the User-Agent request header.
 // It embeds Version, so it tracks -ldflags overrides automatically.

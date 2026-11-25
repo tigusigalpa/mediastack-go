@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/url"
 	"strings"
@@ -15,7 +16,6 @@ import (
 // copied into the Client and never touched again.
 type config struct {
 	httpClient       *http.Client
-	customHTTPClient bool
 	timeout          time.Duration
 	baseURL          string
 	userAgent        string
@@ -83,17 +83,16 @@ func (h discardHandler) WithGroup(string) slog.Handler { return h }
 // validates its argument and returns an error instead of panicking.
 type Option func(*config) error
 
-// WithHTTPClient makes the client use hc for every request. When a
-// custom client is supplied, WithTimeout has no effect on it and Close
-// does not close its idle connections — ownership stays with the
-// caller.
+// WithHTTPClient takes a shallow copy of hc at construction time and
+// retains its transport, cookie jar, timeout and same-origin redirect
+// callback. WithTimeout does not override hc.Timeout. The caller owns
+// the transport and is responsible for closing its idle connections.
 func WithHTTPClient(hc *http.Client) Option {
 	return func(c *config) error {
 		if hc == nil {
 			return errors.New("mediastack: http client must not be nil")
 		}
 		c.httpClient = hc
-		c.customHTTPClient = true
 		return nil
 	}
 }
@@ -126,10 +125,13 @@ func WithBaseURL(rawURL string) Option {
 		if u.Scheme != "https" && u.Scheme != "http" {
 			return fmt.Errorf("mediastack: base URL must use http or https, got %q", u.Scheme)
 		}
-		if u.Host == "" {
+		if u.Hostname() == "" {
 			return errors.New("mediastack: base URL must include a host")
 		}
-		c.baseURL = strings.TrimRight(u.Scheme+"://"+u.Host+u.Path, "/")
+		if u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
+			return errors.New("mediastack: base URL must omit credentials, query and fragment")
+		}
+		c.baseURL = strings.TrimRight(u.Scheme+"://"+u.Host+u.EscapedPath(), "/")
 		return nil
 	}
 }
@@ -151,7 +153,7 @@ func WithUserAgent(ua string) Option {
 // the defaults; see DefaultRetryPolicy.
 func WithRetry(p RetryPolicy) Option {
 	return func(c *config) error {
-		if p.Jitter < 0 || p.Jitter > 1 {
+		if math.IsNaN(p.Jitter) || p.Jitter < 0 || p.Jitter > 1 {
 			return fmt.Errorf("mediastack: retry jitter must be in [0,1], got %g", p.Jitter)
 		}
 		if p.BaseDelay < 0 || p.MaxDelay < 0 {
@@ -179,12 +181,12 @@ func WithNoRetry() Option {
 // off by default; enable it to protect your own quota or to throttle a
 // fleet of workers.
 //
-// A non-positive perSecond disables the limiter. A burst below 1 is
-// treated as 1.
+// A zero rate disables the limiter. Rates must be finite and
+// non-negative. A burst below 1 is treated as 1.
 func WithRateLimit(perSecond float64, burst int) Option {
 	return func(c *config) error {
-		if perSecond < 0 {
-			return fmt.Errorf("mediastack: rate must not be negative, got %g", perSecond)
+		if perSecond < 0 || math.IsNaN(perSecond) || math.IsInf(perSecond, 0) {
+			return fmt.Errorf("mediastack: rate must be finite and non-negative, got %g", perSecond)
 		}
 		c.ratePerSecond = perSecond
 		c.rateBurst = burst
@@ -194,7 +196,7 @@ func WithRateLimit(perSecond float64, burst int) Option {
 
 // WithLogger installs a slog logger. A nil logger restores the default
 // silence. The client logs at Debug for responses and at Warn for
-// retries, limiter waits and unexpected content types; it never logs at
+// retries and unexpected content types; it never logs at
 // Error (errors are returned, not logged) and never logs the access key.
 func WithLogger(l *slog.Logger) Option {
 	return func(c *config) error {
@@ -211,8 +213,8 @@ func WithLogger(l *slog.Logger) Option {
 // responses fail with ErrResponseTooLarge. The default is 10 MiB.
 func WithMaxResponseBytes(n int64) Option {
 	return func(c *config) error {
-		if n <= 0 {
-			return fmt.Errorf("mediastack: max response bytes must be positive, got %d", n)
+		if n <= 0 || n == math.MaxInt64 {
+			return fmt.Errorf("mediastack: max response bytes must be between 1 and %d, got %d", int64(math.MaxInt64-1), n)
 		}
 		c.maxResponseBytes = n
 		return nil
@@ -243,9 +245,8 @@ func WithClock(fn func() time.Time) Option {
 }
 
 // WithRateLimitObserver registers a callback invoked after every
-// response that carries quota headers. The callback runs outside the
-// request path's critical section and is shielded from panics, but it
-// should still be cheap and must not block.
+// response that carries quota headers. It runs synchronously, outside
+// the client's lock. Concurrent requests may invoke it concurrently.
 func WithRateLimitObserver(fn func(RateLimit)) Option {
 	return func(c *config) error {
 		c.rateObserver = fn

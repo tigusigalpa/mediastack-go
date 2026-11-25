@@ -2,7 +2,6 @@ package mediastack
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"iter"
 	"time"
@@ -33,19 +32,11 @@ func (s *NewsService) List(ctx context.Context, params *NewsParams) (*NewsRespon
 	if err != nil {
 		return nil, err
 	}
-	body, meta, err := s.c.do(ctx, "news", values)
+	pagination, data, meta, err := fetchPage[Article](ctx, s.c, "news", values)
 	if err != nil {
 		return nil, err
 	}
-	var out NewsResponse
-	if err := json.Unmarshal(body, &out); err != nil {
-		return nil, fmt.Errorf("mediastack: decode news response: %w", err)
-	}
-	if out.Data == nil {
-		out.Data = []Article{}
-	}
-	out.Meta = meta
-	return &out, nil
+	return &NewsResponse{Pagination: pagination, Data: data, Meta: meta}, nil
 }
 
 // Historical returns one page of articles published between from and to
@@ -73,7 +64,7 @@ func (s *NewsService) Historical(ctx context.Context, from, to time.Time, params
 // returns false. When the pagination window (MaxPaginationWindow) would
 // be exceeded, it yields an error wrapping ErrMaxOffset once and ends —
 // records beyond the window are unreachable through offset pagination.
-// A nil params value iterates the first page of unfiltered results.
+// A nil params value iterates unfiltered results from the first page.
 //
 //	for a, err := range client.News.Iter(ctx, params) {
 //		if err != nil {
@@ -86,6 +77,10 @@ func (s *NewsService) Iter(ctx context.Context, params *NewsParams) iter.Seq2[Ar
 		p := NewsParams{}
 		if params != nil {
 			p = *params
+		}
+		if err := startPaging(&p.Limit, &p.Offset, &p.Extra); err != nil {
+			yield(Article{}, err)
+			return
 		}
 		for {
 			resp, err := s.List(ctx, &p)
@@ -101,7 +96,11 @@ func (s *NewsService) Iter(ctx context.Context, params *NewsParams) iter.Seq2[Ar
 			if !resp.Pagination.HasMore() {
 				return
 			}
-			p.Offset = resp.Pagination.NextOffset()
+			p.Offset, p.Limit, err = advancePage(resp.Pagination, p.Offset, p.Limit)
+			if err != nil {
+				yield(Article{}, err)
+				return
+			}
 		}
 	}
 }
@@ -112,8 +111,7 @@ func (s *NewsService) Iter(ctx context.Context, params *NewsParams) iter.Seq2[Ar
 // A maxItems of zero fetches exactly one page. A maxItems above
 // MaxPaginationWindow fails with ErrMaxOffset before any request: that
 // many records cannot be reached through offset pagination. Collect
-// picks page sizes of min(MaxLimit, remaining) so it never fetches
-// more than asked for.
+// chooses its own page sizes up to MaxLimit and returns at most maxItems.
 func (s *NewsService) Collect(ctx context.Context, params *NewsParams, maxItems int) ([]Article, error) {
 	if maxItems < 0 {
 		return nil, &ValidationError{Fields: map[string][]string{
@@ -128,6 +126,9 @@ func (s *NewsService) Collect(ctx context.Context, params *NewsParams, maxItems 
 	if params != nil {
 		p = *params
 	}
+	if err := startPaging(&p.Limit, &p.Offset, &p.Extra); err != nil {
+		return nil, err
+	}
 	if maxItems > 0 {
 		p.Limit = min(MaxLimit, maxItems)
 	}
@@ -137,12 +138,18 @@ func (s *NewsService) Collect(ctx context.Context, params *NewsParams, maxItems 
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, resp.Data...)
+		page := resp.Data
+		if maxItems > 0 {
+			page = page[:min(len(page), maxItems-len(out))]
+		}
+		out = append(out, page...)
 		if maxItems == 0 || len(out) >= maxItems || !resp.Pagination.HasMore() {
 			break
 		}
-		p.Offset = resp.Pagination.NextOffset()
-		p.Limit = min(MaxLimit, maxItems-len(out))
+		p.Offset, p.Limit, err = advancePage(resp.Pagination, p.Offset, min(MaxLimit, maxItems-len(out)))
+		if err != nil {
+			return nil, err
+		}
 	}
 	return out, nil
 }

@@ -1,7 +1,7 @@
 package mediastack
 
 import (
-	"net/http"
+	"encoding/json"
 	"net/url"
 	"regexp"
 	"strings"
@@ -16,11 +16,19 @@ var accessKeyRe = regexp.MustCompile(`access_key=[^&\s"'<>]+`)
 // literal appearance of key in s with REDACTED. Pass an empty key to
 // redact only the parameter form.
 func redactKey(s, key string) string {
-	s = accessKeyRe.ReplaceAllString(s, "access_key=REDACTED")
-	if key != "" {
-		s = strings.ReplaceAll(s, key, "REDACTED")
+	if key == "" {
+		return accessKeyRe.ReplaceAllString(s, "access_key=REDACTED")
 	}
-	return s
+	escaped := url.QueryEscape(key)
+	queryValue := strings.ReplaceAll(escaped, "%2C", ",")
+	jsonKey, _ := json.Marshal(key)
+	s = strings.NewReplacer(
+		key, "REDACTED",
+		escaped, "REDACTED",
+		queryValue, "REDACTED",
+		string(jsonKey[1:len(jsonKey)-1]), "REDACTED",
+	).Replace(s)
+	return accessKeyRe.ReplaceAllString(s, "access_key=REDACTED")
 }
 
 // redactURL returns a string form of u with the access_key parameter
@@ -38,29 +46,8 @@ func redactURL(u *url.URL) string {
 	return c.String()
 }
 
-// redactHeader returns a copy of h with access_key occurrences replaced
-// by REDACTED in every value.
-func redactHeader(h http.Header) http.Header {
-	out := make(http.Header, len(h))
-	for k, vs := range h {
-		cp := make([]string, len(vs))
-		for i, v := range vs {
-			cp[i] = redactKey(v, "")
-		}
-		out[k] = cp
-	}
-	return out
-}
-
-// redactBody returns body with access_key occurrences replaced. It is
-// applied to response bodies retained in APIError.Body so that %+v
-// dumps and error chains can never leak the key.
-func redactBody(body []byte) []byte {
-	return accessKeyRe.ReplaceAll(body, []byte("access_key=REDACTED"))
-}
-
 // truncate returns at most n bytes of b.
-func truncate(b []byte, n int) []byte {
+func truncate(b string, n int) string {
 	if len(b) <= n {
 		return b
 	}

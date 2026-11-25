@@ -2,8 +2,6 @@ package mediastack
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"iter"
 )
 
@@ -33,19 +31,11 @@ func (s *SourcesService) List(ctx context.Context, params *SourceParams) (*Sourc
 	if err != nil {
 		return nil, err
 	}
-	body, meta, err := s.c.do(ctx, "sources", values)
+	pagination, data, meta, err := fetchPage[Source](ctx, s.c, "sources", values)
 	if err != nil {
 		return nil, err
 	}
-	var out SourceResponse
-	if err := json.Unmarshal(body, &out); err != nil {
-		return nil, fmt.Errorf("mediastack: decode sources response: %w", err)
-	}
-	if out.Data == nil {
-		out.Data = []Source{}
-	}
-	out.Meta = meta
-	return &out, nil
+	return &SourceResponse{Pagination: pagination, Data: data, Meta: meta}, nil
 }
 
 // Search is a convenience wrapper that sets the required search term on
@@ -71,6 +61,10 @@ func (s *SourcesService) Iter(ctx context.Context, params *SourceParams) iter.Se
 		if params != nil {
 			p = *params
 		}
+		if err := startPaging(&p.Limit, &p.Offset, &p.Extra); err != nil {
+			yield(Source{}, err)
+			return
+		}
 		for {
 			resp, err := s.List(ctx, &p)
 			if err != nil {
@@ -85,7 +79,11 @@ func (s *SourcesService) Iter(ctx context.Context, params *SourceParams) iter.Se
 			if !resp.Pagination.HasMore() {
 				return
 			}
-			p.Offset = resp.Pagination.NextOffset()
+			p.Offset, p.Limit, err = advancePage(resp.Pagination, p.Offset, p.Limit)
+			if err != nil {
+				yield(Source{}, err)
+				return
+			}
 		}
 	}
 }

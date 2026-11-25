@@ -1,79 +1,35 @@
-# Mediastack Golang Client/SDK/Library
+# Mediastack Go
 
-Production-ready Go SDK for the [Mediastack](https://mediastack.com) news API — live and historical articles from 7,500+ sources, with typed filters, pagination, retries and rate limiting. **Zero dependencies.**
-
-Namespace: `Tigusigalpa/Mediastack` · Module: `github.com/tigusigalpa/mediastack-go` · Package: `mediastack`
+![Mediastack Go](https://i.postimg.cc/qBX9P6sn/mediastack-go-hero-banner.jpg)
 
 [![CI](https://github.com/tigusigalpa/mediastack-go/actions/workflows/ci.yml/badge.svg)](https://github.com/tigusigalpa/mediastack-go/actions/workflows/ci.yml)
 [![Tests](https://github.com/tigusigalpa/mediastack-go/actions/workflows/test.yml/badge.svg)](https://github.com/tigusigalpa/mediastack-go/actions/workflows/test.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/tigusigalpa/mediastack-go.svg)](https://pkg.go.dev/github.com/tigusigalpa/mediastack-go)
-[![CodeQL](https://github.com/tigusigalpa/mediastack-go/actions/workflows/codeql.yml/badge.svg)](https://github.com/tigusigalpa/mediastack-go/actions/workflows/codeql.yml)
-[![codecov](https://codecov.io/gh/tigusigalpa/mediastack-go/branch/main/graph/badge.svg)](https://codecov.io/gh/tigusigalpa/mediastack-go)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Go Version](https://img.shields.io/badge/Go-%E2%89%A5%201.23-007d9c)](go.mod)
-[![Latest Release](https://img.shields.io/github/v/release/tigusigalpa/mediastack-go)](https://github.com/tigusigalpa/mediastack-go/releases)
+[![Coverage](https://codecov.io/gh/tigusigalpa/mediastack-go/branch/main/graph/badge.svg)](https://codecov.io/gh/tigusigalpa/mediastack-go)
+[![Release](https://img.shields.io/github/v/release/tigusigalpa/mediastack-go)](https://github.com/tigusigalpa/mediastack-go/releases)
+[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Mediastack aggregates worldwide news, headlines and blog articles — live and historical — and returns them in a lightweight JSON format through two GET endpoints. This SDK wraps the entire documented surface of the API in an idiomatic, fully typed, single-package library. It is unofficial and maintained independently of APILayer.
+Mediastack Go is an unofficial Go client for the Mediastack news API. Use it to fetch a page of recent headlines, run a historical search, or look up the source IDs behind your news feed. It uses Go's standard library and requires Go 1.23 or later.
 
-## Features
+[Quick start](#quick-start) · [Filters and historical news](#filters-and-historical-news) · [Pagination](#pagination) · [Errors and quotas](#errors-and-quotas) · [Configuration](#configuration) · [Testing](#testing)
 
-- **Complete API coverage** — both documented endpoints, `/v1/news` and `/v1/sources`, with every documented parameter.
-- **Typed filters** — `Filter[T]` models include/exclude lists (`cnn,-bbc`) so callers never touch wire encoding.
-- **Lazy pagination** — `iter.Seq2` iterators that fetch pages only as you consume them, plus `Collect` and manual offset helpers.
-- **Dual-format error decoding** — the live API, the OpenAPI contract and the validation endpoint emit three different error envelopes; all normalize into one `*APIError`.
-- **Safe retries** — exponential backoff with jitter and `Retry-After` support; quota-exhausted 429s are correctly *not* retried.
-- **Optional rate limiter** — a dependency-free token bucket plus parsing of APILayer `X-RateLimit-*` quota headers.
-- **Key safety** — the access key is redacted from logs, error strings and `%v` output; it travels only in the `access_key` query parameter.
-- **Zero dependencies** — standard library only; `go.mod` has no `require` block.
-- **Fully tested** — unit tests run without network; integration tests live behind a build tag.
+## Quick start
 
-## Table of Contents
+Install the package in your Go module and get a Mediastack access key from your [account dashboard](https://mediastack.com/dashboard).
 
-- [Requirements](#requirements)
-- [Installation](#installation)
-- [Quick Start](#quick-start)
-- [Choosing a Service](#choosing-a-service)
-- [Recipes](#recipes)
-- [Configuration](#configuration)
-- [Service Map](#service-map)
-- [Method Usage](#method-usage)
-- [Reading Responses](#reading-responses)
-- [Params & Validation](#params--validation)
-- [Pagination](#pagination)
-- [Error Handling](#error-handling)
-- [Retries & Rate Limits](#retries--rate-limits)
-- [Plans & Limits](#plans--limits)
-- [Concurrency](#concurrency)
-- [Using the SDK in a Service](#using-the-sdk-in-a-service)
-- [Testing](#testing)
-- [Security](#security)
-- [Troubleshooting](#troubleshooting)
-- [Examples](#examples)
-- [Endpoint Documentation](#endpoint-documentation)
-- [Namespace & Identity](#namespace--identity)
-- [Documentation Discrepancies](#documentation-discrepancies)
-- [Contributing](#contributing)
-- [License](#license)
-- [Disclaimer](#disclaimer)
-
-## Requirements
-
-- **Go 1.23+** (uses `iter.Seq2`, `slog`, `math/rand/v2`).
-- A **Mediastack access key** — register at [mediastack.com](https://mediastack.com) (free plan available), then find the key in your [dashboard](https://mediastack.com/dashboard).
-
-## Installation
-
-```bash
+```sh
 go get github.com/tigusigalpa/mediastack-go
 ```
 
-```go
-import mediastack "github.com/tigusigalpa/mediastack-go"
+Set `MEDIASTACK_ACCESS_KEY` before running your program.
+
+```sh
+export MEDIASTACK_ACCESS_KEY='your-key'
 ```
 
-API documentation on pkg.go.dev: [pkg.go.dev/github.com/tigusigalpa/mediastack-go](https://pkg.go.dev/github.com/tigusigalpa/mediastack-go)
+In PowerShell, use `$env:MEDIASTACK_ACCESS_KEY = 'your-key'`.
 
-## Quick Start
+Save this as `main.go` and run `go run .`.
 
 ```go
 package main
@@ -82,496 +38,228 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
+	"time"
 
-	mediastack "github.com/tigusigalpa/mediastack-go"
+	"github.com/tigusigalpa/mediastack-go"
 )
 
 func main() {
-	client, err := mediastack.NewClient(os.Getenv(mediastack.EnvAccessKey))
+	client, err := mediastack.NewClientFromEnv()
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer client.Close()
 
-	resp, err := client.News.List(context.Background(), &mediastack.NewsParams{
-		Limit: 3, // stay frugal: the free plan allows 100 requests/month
-	})
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	page, err := client.News.List(ctx, &mediastack.NewsParams{Limit: 5})
 	if err != nil {
 		log.Fatal(err)
 	}
-	for _, a := range resp.Data {
-		fmt.Println(a.PublishedAt.Format("2006-01-02"), a.Source, "—", a.Title)
+	for _, article := range page.Data {
+		fmt.Printf("%s | %s\n%s\n", article.Source, article.Title, article.URL)
 	}
 }
 ```
 
-```bash
-export MEDIASTACK_ACCESS_KEY=your_key
-go run .
-```
+Use `NewClient(key, ...)` if your application already loads credentials from a secret store. Both constructors validate configuration locally. The API checks the key on the first request.
 
-## Choosing a Service
+## Choose a method
 
-| You want | Service |
-| --- | --- |
-| Live or historical news articles, filtered by keyword/source/category/country/language/date | `client.News` (`GET /v1/news`) |
-| Discover which sources exist, their IDs, categories and sites | `client.Sources` (`GET /v1/sources`) |
+| What you need | Method | HTTP endpoint |
+| --- | --- | --- |
+| One page of recent or filtered articles | `News.List(ctx, params)` | `GET /v1/news` |
+| One page from an inclusive historical date range | `News.Historical(ctx, from, to, params)` | `GET /v1/news` |
+| A stream of articles across pages | `News.Iter(ctx, params)` | `GET /v1/news` |
+| A slice capped at a given number of articles | `News.Collect(ctx, params, maxItems)` | `GET /v1/news` |
+| Find source IDs by name or keyword | `Sources.Search(ctx, term, params)` | `GET /v1/sources` |
+| List or iterate matching sources with a search term in params | `Sources.List(ctx, params)`, `Sources.Iter(ctx, params)` | `GET /v1/sources` |
 
-Typical workflow: use `client.Sources.Search(ctx, "bbc", nil)` to learn that the identifier is `bbc`, then filter articles with `NewsParams.Sources = Filter[string]{Include: []string{"bbc"}}`.
+`News.List(ctx, nil)` uses the API defaults. `Sources.Search(ctx, "bbc", nil)` uses the given search term with default filters. When using `Sources.List` or `Sources.Iter`, set `SourceParams.Search`.
 
-## Recipes
+Every successful page has `Data`, `Pagination` and `Meta`. An empty result has an empty `Data` slice. `Meta` includes the HTTP status, request ID, attempt count, HTTP time, fetch time and any quota headers returned by the server. Use the request ID when reporting an upstream issue.
 
-### News on a topic
+`Article.Author`, `Description` and `Image` are empty strings when the API returns null. Check `article.PublishedAt.IsZero()` before using the timestamp as a checkpoint. `article.URL` points to the original publication.
 
-```go
-resp, err := client.News.List(ctx, &mediastack.NewsParams{
-	Keywords: mediastack.Filter[string]{Include: []string{"artificial intelligence"}},
-	Limit:    10,
-})
-```
+## Filters and historical news
 
-### Only articles with images
+Use `Filter[T]` to include and exclude values. This example requests English-language business headlines about a topic while excluding a related term.
 
 ```go
-withImage := true
-resp, err := client.News.List(ctx, &mediastack.NewsParams{
-	OnlyWithImage: &withImage, // nil would omit the parameter entirely
-})
-```
-
-### Exclude a source
-
-```go
-resp, err := client.News.List(ctx, &mediastack.NewsParams{
-	Sources: mediastack.Filter[string]{
-		Include: []string{"cnn"},
-		Exclude: []string{"bbc"}, // encodes as sources=cnn,-bbc
+params := &mediastack.NewsParams{
+	Keywords: mediastack.Filter[string]{
+		Include: []string{"interest rates"},
+		Exclude: []string{"mortgage"},
 	},
+	Languages: mediastack.Filter[mediastack.Language]{
+		Include: []mediastack.Language{mediastack.LanguageEnglish},
+	},
+	Categories: mediastack.Filter[mediastack.Category]{
+		Include: []mediastack.Category{mediastack.CategoryBusiness},
+	},
+	Sort:  mediastack.SortPublishedDesc,
+	Limit: 20,
+}
+page, err := client.News.List(ctx, params)
+```
+
+Pass each term as its own list element. Phrases can contain spaces. The client joins the lists and prefixes exclusions with `-`. To request articles with images, set `OnlyWithImage` to a pointer to `true`. A nil pointer leaves the API default in effect.
+
+To search by publisher, look up the ID and use it in `NewsParams.Sources.Include`. Source names displayed in articles can differ from their IDs.
+
+```go
+page, err := client.Sources.Search(ctx, "bbc", nil)
+if err != nil {
+	return err
+}
+for _, source := range page.Data {
+	fmt.Printf("%s: %s\n", source.ID, source.Name)
+}
+```
+
+For historical news, pass a date range with `Historical` or set `NewsParams.Date` using `OnDay`, `Between` or a named `Preset`. The SDK formats explicit dates as UTC calendar days, with both ends included.
+
+```go
+from := time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC)
+to := time.Date(2025, time.January, 7, 0, 0, 0, 0, time.UTC)
+page, err := client.News.Historical(ctx, from, to, &mediastack.NewsParams{
+	Sort:  mediastack.SortPublishedAsc,
+	Limit: 50,
 })
 ```
 
-### Historical range (paid plans)
+For a date entered by a user, `ParseDateFilter` accepts a day such as `2025-01-01`, a range such as `2025-01-01,2025-01-07`, or a preset such as `last7days`.
+
+APILayer documents a 30-minute news delay on Free and historical access starting at Standard. Check the current [API features](https://docs.apilayer.com/mediastack/docs/api-features) and [pricing](https://mediastack.com/pricing/) for your account.
+
+### Query parameters
+
+| API parameter | News | Sources | Go field or behavior |
+| --- | --- | --- | --- |
+| `access_key` | Required | Required | Supplied by the client |
+| `search` | | Required | `SourceParams.Search` |
+| `keywords` | Optional | | `NewsParams.Keywords` |
+| `sources` | Optional | | `NewsParams.Sources` with IDs from the source lookup |
+| `categories`, `countries`, `languages` | Optional | Optional | `Categories`, `Countries`, `Languages` |
+| `date` | Optional | | `NewsParams.Date` |
+| `sort` | Optional | | `SortPublishedDesc` (default), `SortPublishedAsc` or `SortPopularity` |
+| `only_with_image` | Optional | | `NewsParams.OnlyWithImage` |
+| `limit`, `offset` | Optional | Optional | `Limit`, `Offset` |
+
+The client validates typed filters, date ranges and pagination locally. Enable `WithStrictEnums()` to validate category and language values and check the shape of country codes. Use `Extra` for raw query parameters. The client always sets its own `access_key` and validates paging overrides before sending them.
+
+## Pagination
+
+Start with `List` for a single page. Use `Iter` to process results one at a time. Breaking out of the loop prevents the SDK from requesting additional pages.
 
 ```go
-from := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
-to := time.Date(2024, 1, 31, 0, 0, 0, 0, time.UTC)
-resp, err := client.News.Historical(ctx, from, to, &mediastack.NewsParams{Limit: 50})
-```
-
-Or with a named preset: `Date: mediastack.Preset(mediastack.DateLast7Days)`.
-
-### Every matching article
-
-```go
+processed := 0
 for article, err := range client.News.Iter(ctx, params) {
 	if err != nil {
 		return err
 	}
 	fmt.Println(article.Title)
+	processed++
+	if processed == 250 {
+		break
+	}
 }
 ```
 
-### Find a source
+- The page size defaults to 25 and can be set from 1 to 100. The API accepts up to 10,000 records per query through offset pagination.
+- The iterators use the returned count and total to decide when to continue. They reduce the next page size when needed to finish the 10,000-record window. If the API reports more records at that boundary, the iterator yields `ErrMaxOffset`. A stalled offset yields `ErrInvalidPagination`.
+- `Collect(ctx, params, 250)` returns up to 250 articles and chooses its own page sizes. `Collect(ctx, params, 0)` fetches one page with the supplied settings. Use `Iter` if you need to keep articles processed before a later request fails.
+- For a manual loop, call `page.Pagination.HasMore()` and use `NextOffset()` for the next request. Check that the offset advances and that the next request fits within the window.
+
+For a backfill, query smaller historical intervals and persist your progress after storing each batch. A busy interval can fill the 10,000-record window by itself. If that happens on a single day, split further by source or another filter and deduplicate overlapping results.
+
+For a live feed, new articles can shift results between requests. Poll recent pages on a schedule and deduplicate by article URL in storage. Size your polling interval, page count and retries against your request budget. One page fetch uses one API request regardless of the page size. [Mediastack FAQ](https://mediastack.com/faq)
+
+## Errors and quotas
+
+Use `errors.Is` for decisions and `errors.As` for details. An upstream error can include a machine code, field validation details, a request ID and a `Retry-After` duration.
 
 ```go
-resp, err := client.Sources.Search(ctx, "bbc", &mediastack.SourceParams{
-	Countries: mediastack.Filter[mediastack.Country]{Include: []mediastack.Country{mediastack.CountryGB}},
-})
+switch {
+case errors.Is(err, mediastack.ErrUsageLimitReached):
+	log.Print("Mediastack quota exhausted")
+case errors.Is(err, mediastack.ErrRateLimitReached):
+	log.Print("Mediastack request throttled")
+case errors.Is(err, mediastack.ErrAccessRestricted):
+	log.Print("Mediastack denied access to this feature")
+case err != nil:
+	var apiErr *mediastack.APIError
+	if errors.As(err, &apiErr) {
+		log.Printf("Mediastack status=%d code=%s request_id=%s",
+			apiErr.HTTPStatus, apiErr.Code, apiErr.RequestID)
+	}
+	return err
+}
 ```
+
+| Error | What to check |
+| --- | --- |
+| `ErrMissingAccessKey` / `ErrInvalidAccessKey` | Check the environment variable and the key in your dashboard |
+| `ErrMissingSearch` | Supply the query for `/v1/sources` |
+| `ErrInvalidParams` | Inspect `*ValidationError.Fields` for checks performed locally |
+| `ErrValidation` | Inspect `*APIError.Context` for fields rejected upstream |
+| `ErrUsageLimitReached` | Check the quota for your plan before scheduling another run |
+| `ErrRateLimitReached` | Review request pacing and the upstream `Retry-After` value |
+| `ErrMaxOffset` | Narrow the date interval or the filters |
+| `ErrInvalidPagination` | Inspect the returned offset and count before retrying a paginated job |
+| `ErrResponseTooLarge` | Reduce the page size or set a response cap appropriate for your service |
+
+By default, each SDK call makes up to three attempts. It retries eligible transport failures, HTTP 5xx and rate-limit 429s. Quota exhaustion and client-side validation failures return immediately. The default backoff starts at 500 ms, uses jitter and caps delays at 10 seconds. A usable `Retry-After` value takes precedence up to the configured cap.
+
+The optional token bucket limits outgoing attempts per client, including retries. When the API sends quota headers, `page.Meta.RateLimit` describes that response and `client.RateLimit()` returns the latest available snapshot. Check `Present` before using the counters. `WithRateLimitObserver` runs synchronously and can be called from several goroutines at once.
 
 ## Configuration
 
+Reuse one client across goroutines to share the connection pool and request pacing. Give each HTTP operation a context. A context deadline bounds pagination, rate-limit waits and retry backoff across the whole operation. The HTTP client timeout applies to each attempt.
+
 ```go
-client, err := mediastack.NewClient(key,
-	mediastack.WithTimeout(15*time.Second),
-	mediastack.WithRetry(mediastack.RetryPolicy{MaxAttempts: 5}),
-	mediastack.WithRateLimit(5, 5),
+client, err := mediastack.NewClientFromEnv(
+	mediastack.WithTimeout(10*time.Second),
+	mediastack.WithRateLimit(2, 2),
+	mediastack.WithRetry(mediastack.RetryPolicy{
+		MaxAttempts: 3,
+		MaxDelay:    5 * time.Second,
+	}),
 )
 ```
 
-| Option | Default | Effect |
-| --- | --- | --- |
-| `WithHTTPClient(hc)` | internal `*http.Client` with 30s timeout | supply your own transport/proxy; `Close` then does nothing |
-| `WithTimeout(d)` | `30s` | per-request timeout via `http.Client.Timeout` |
-| `WithBaseURL(u)` | `https://api.mediastack.com` | custom endpoint (tests, proxies); must be http/https with a host |
-| `WithUserAgent(s)` | `mediastack-go/<ver> (+repo)` | custom `User-Agent` |
-| `WithRetry(p)` | 3 attempts, 500ms base, ×2, 10s cap, 0.2 jitter | replace retry policy; zero fields inherit defaults |
-| `WithNoRetry()` | — | exactly one attempt per call |
-| `WithRateLimit(rps, burst)` | off | client-side token bucket (rps may be fractional, e.g. `0.5`) |
-| `WithLogger(l)` | silent | `slog` logging: Debug per response, Warn per retry/limiter wait |
-| `WithMaxResponseBytes(n)` | `10 MiB` | cap on decoded body size → `ErrResponseTooLarge` |
-| `WithStrictEnums()` | off | validate category/language/country values client-side |
-| `WithClock(fn)` | `time.Now` | test hook for timestamps and HTTP-date `Retry-After` |
-| `WithRateLimitObserver(fn)` | — | callback on every response carrying quota headers |
+| Option | Default and use |
+| --- | --- |
+| `WithTimeout(d)` | 30 seconds per HTTP attempt with the SDK's client |
+| `WithHTTPClient(hc)` | Supplies a transport, cookie jar and timeout through a shallow copy. The caller manages the transport's idle connections |
+| `WithBaseURL(u)` | `https://api.mediastack.com`. Use a trusted HTTPS proxy or a local test server. A path prefix is supported |
+| `WithRetry(policy)`, `WithNoRetry()` | Set retry limits or disable SDK retries. Zero policy fields inherit defaults |
+| `WithRateLimit(rps, burst)` | Off. Enable per-client pacing, including fractional requests per second |
+| `WithLogger(logger)` | Silent. A `slog.Logger` can record responses at Debug and retries or unexpected content types at Warn |
+| `WithMaxResponseBytes(n)` | 10 MiB for the body read by the SDK |
+| `WithStrictEnums()` | Off. Validate category, language and country values locally |
+| `WithRateLimitObserver(fn)` | Off. Receive snapshots when quota headers are present |
+| `WithUserAgent(s)`, `WithClock(fn)` | Override the user agent or the clock used for timing and `Retry-After` |
 
-## Service Map
-
-| Service | Method | Endpoint | Documentation |
-| --- | --- | --- | --- |
-| `client.News` | `List`, `Historical`, `Iter`, `Collect` | `GET /v1/news` | [getNews](https://docs.apilayer.com/mediastack/docs/mediastack-api-v-1-0-0#/API%20Endpoints/getNews) |
-| `client.Sources` | `List`, `Search`, `Iter` | `GET /v1/sources` | [getSources](https://docs.apilayer.com/mediastack/docs/mediastack-api-v-1-0-0#/API%20Endpoints/getSources) |
-
-## Method Usage
-
-```go
-// NewsService
-func (s *NewsService) List(ctx context.Context, params *NewsParams) (*NewsResponse, error)
-func (s *NewsService) Historical(ctx context.Context, from, to time.Time, params *NewsParams) (*NewsResponse, error)
-func (s *NewsService) Iter(ctx context.Context, params *NewsParams) iter.Seq2[Article, error]
-func (s *NewsService) Collect(ctx context.Context, params *NewsParams, maxItems int) ([]Article, error)
-
-// SourcesService
-func (s *SourcesService) List(ctx context.Context, params *SourceParams) (*SourceResponse, error)
-func (s *SourcesService) Search(ctx context.Context, term string, params *SourceParams) (*SourceResponse, error)
-func (s *SourcesService) Iter(ctx context.Context, params *SourceParams) iter.Seq2[Source, error]
-
-// Client
-func NewClient(accessKey string, opts ...Option) (*Client, error)
-func NewClientFromEnv(opts ...Option) (*Client, error)
-func (c *Client) RateLimit() RateLimit
-func (c *Client) Close() error
-```
-
-Notes:
-
-- `nil` params are accepted everywhere except `Sources.List`/`Sources.Search`, where the API-mandated `search` term is required (`ErrMissingSearch`).
-- Methods never mutate the params you pass.
-- `ctx` is required: pass `context.Background()` or a real deadline. The SDK never substitutes one for you.
-
-## Reading Responses
-
-```go
-resp, err := client.News.List(ctx, params)
-resp.Pagination            // {Limit, Offset, Count, Total} + Page/TotalPages/HasMore/NextOffset/IsLast/Remaining
-resp.Data                  // []Article — never nil after success
-resp.Meta.StatusCode       // 200
-resp.Meta.RequestID        // cf-ray — quote it to APILayer support
-resp.Meta.Attempts         // HTTP attempts used (retries included)
-resp.Meta.Duration         // total round-trip time
-resp.Meta.RateLimit        // quota headers, see Retries & Rate Limits
-```
-
-`Article` fields map one-to-one to the [documented schema](https://docs.apilayer.com/mediastack/docs/mediastack-api-v-1-0-0#/Article). Nullable fields (`author`, `description`, `image`) decode JSON `null` to `""` — no pointers to check. `PublishedAt` parses tolerantly: RFC 3339 with or without timezone/fraction, `YYYY-MM-DD HH:MM:SS`, `YYYY-MM-DDTHH:MM:SS`, and bare dates (all treated as UTC); an unparseable value yields `time.Time{}` rather than failing the whole page.
-
-Helpers: `a.HasImage()`, `a.ImageURL()`, `a.LinkURL()`, `a.IsZero()`, `a.String()`.
-
-`Source.ID` is populated from either `id` or `code` — the API uses both spellings across documentation and responses; the SDK folds them into one field. That ID is the value to pass to `NewsParams.Sources`.
-
-## Params & Validation
-
-```go
-type NewsParams struct {
-	Keywords      Filter[string]   // full-text, phrases with spaces OK
-	Sources       Filter[string]   // source IDs (from Sources endpoint)
-	Categories    Filter[Category]
-	Countries     Filter[Country]
-	Languages     Filter[Language]
-	Date          DateFilter       // OnDay / Between / Preset / ParseDateFilter
-	Sort          SortOrder        // published_desc (default) | published_asc | popularity
-	Limit         int              // 1..100; 0 = omit → API applies 25
-	Offset        int              // >= 0; offset+limit <= 10000
-	OnlyWithImage *bool            // nil = omit; &true / &false send explicitly
-	Extra         url.Values       // escape hatch, applied last, overrides everything
-}
-```
-
-`SourceParams` is the same minus `Keywords`, `Sources`, `Date`, `Sort`, `OnlyWithImage`, and plus a required `Search` term.
-
-**Validated client-side:** `limit`/`offset` ranges, `offset+limit ≤ 10000`, the three `sort` values, empty/comma-containing filter elements, malformed `date` filters, missing `search` for `/v1/sources`, and a valid `access_key`/`baseURL`.
-
-**Deliberately not validated** (unless `WithStrictEnums`): whether a category/language/country is in the documented set. The API may know more than this SDK; unknown values travel to the server and come back as a clear `validation_error`. See [Documentation Discrepancies](#documentation-discrepancies).
-
-`Filter[T]`:
-
-```go
-type Filter[T ~string] struct {
-	Include []T // all values must be non-empty and contain no commas
-	Exclude []T // encoded after includes, each prefixed with "-"
-}
-```
-
-`DateFilter`:
-
-```go
-mediastack.OnDay(t)          // "2024-05-01"
-mediastack.Between(from, to) // "2024-05-01,2024-05-31" (inclusive, UTC)
-mediastack.Preset(mediastack.DateLast7Days) // "last7days"
-mediastack.ParseDateFilter("2024-05-01,2024-05-31")
-```
-
-Presets: `today`, `thisweek`, `thismonth`, `last7days`, `last30days`, `last3months`, `yeartodate`.
-
-## Pagination
-
-The API paginates with `limit` (≤ 100) and `offset`. **Only the first 10,000 matching records are reachable**: `offset + limit > 10000` is rejected, and `total` may exceed the window.
-
-Three styles:
-
-```go
-// 1. Lazy iterator — fetches on demand, stops on first error,
-//    yields ErrMaxOffset once if the window would be exceeded.
-for a, err := range client.News.Iter(ctx, params) { ... }
-
-// 2. Collect — bounded gather with efficient page sizes (min(100, remaining)).
-articles, err := client.News.Collect(ctx, params, 250) // → requests of 100, 100, 50
-
-// 3. Manual — you own the offset.
-for {
-	resp, err := client.News.List(ctx, params)
-	if err != nil { return err }
-	for _, a := range resp.Data { fmt.Println(a.Title) }
-	if !resp.Pagination.HasMore() { break }
-	params.Offset = resp.Pagination.NextOffset()
-}
-```
-
-`Pagination` helpers: `Page()`, `TotalPages()`, `HasMore()`, `NextOffset()`, `IsLast()`, `Remaining()`. `HasMore` is computed as `offset+count < total`, so a short last page never triggers a wasted, quota-consuming request.
-
-## Error Handling
-
-Two mechanisms:
-
-```go
-var apiErr *mediastack.APIError
-switch {
-case errors.As(err, &apiErr):
-	fmt.Println(apiErr.HTTPStatus, apiErr.Code, apiErr.Message, apiErr.RequestID)
-case errors.Is(err, mediastack.ErrRateLimitReached):
-	// slow down
-}
-```
-
-`APIError.Unwrap` returns the matching sentinel, so `errors.Is` works on every API failure.
-
-| API `type` | Numeric | HTTP | Sentinel | Retried |
-| --- | --- | --- | --- | --- |
-| `missing_access_key`, `invalid_access_key` | 101 | 401 | `ErrInvalidAccessKey` | no |
-| `inactive_user` | 102 | 401 | `ErrInactiveUser` | no |
-| `account_on_hold` | 107 | 401 | `ErrAccountOnHold` | no |
-| `api_access_blocked`, `https_access_restricted`, `function_access_restricted` | 104/105 | 403 | `ErrAccessRestricted` | no |
-| `invalid_api_function` | 103 | 404 | `ErrInvalidFunction` | no |
-| `404_not_found` | 404 | 404 | `ErrNotFound` | no |
-| `validation_error` | — | 422 | `ErrValidation` | no |
-| `usage_limit_reached`, `daily_usage_limit_reached`, `fair_use_limit_reached` | 104 | 429 | `ErrUsageLimitReached` | **no** |
-| `rate_limit_reached` | 106 | 429 | `ErrRateLimitReached` | yes, honoring `Retry-After` |
-| `internal_error` | 0 | 500 | `ErrInternal` | yes |
-| `maintenance_mode` | 503 | 503 | `ErrMaintenance` | yes |
-
-Client-side sentinels: `ErrMissingAccessKey`, `ErrInvalidParams` (matched by `*ValidationError`), `ErrMissingSearch`, `ErrMaxOffset`, `ErrResponseTooLarge`, `ErrEmptyResponse`.
-
-Helpers: `mediastack.IsTimeout(err)`, `mediastack.IsTemporary(err)`, `apiErr.Temporary()`, `apiErr.ValidationContext()` (e.g. `date=[NO_SUCH_CHOICE_ERROR]`).
-
-**Important:** the API emits *three* error envelopes (see [Documentation Discrepancies](#documentation-discrepancies)). Always switch on `apiErr.Code` / sentinels, never on `apiErr.NumericCode` — `104` alone covers three different 429 conditions.
-
-## Retries & Rate Limits
-
-Default policy: 3 attempts, exponential backoff `500ms × 2ⁿ` capped at 10s, ±20% jitter, `Retry-After` (seconds or HTTP-date) takes precedence but is still capped. Retried: transport errors, 5xx, and 429 `rate_limit_reached`. Never retried: 4xx (incl. quota-429s), decode failures, `context.Canceled`/`DeadlineExceeded`. All endpoints are idempotent GETs, which is what makes automatic retries safe.
-
-```go
-mediastack.WithRetry(mediastack.RetryPolicy{
-	MaxAttempts: 5, BaseDelay: time.Second, MaxDelay: 30 * time.Second, Jitter: 0.3,
-	RetryOn: func(resp *http.Response, err error) bool { /* custom */ },
-})
-mediastack.WithNoRetry()
-```
-
-APILayer reports quota through `X-RateLimit-Limit-Day`, `X-RateLimit-Limit-Month`, `X-RateLimit-Remaining-Day`, `X-RateLimit-Remaining-Month` ([reference](https://marketplace.apilayer.com/docs/article/rate-limits)). They are not present on every response; check `RateLimit.Present`. Latest snapshot: `client.RateLimit()` or `ResponseMeta.RateLimit`; callback: `WithRateLimitObserver`.
-
-Client-side pacing is **off by default** (APILayer publishes no per-second limit for Mediastack): `WithRateLimit(2, 2)` enables a standard-library token bucket.
-
-## Plans & Limits
-
-| Plan | Requests/month | Live data | History | Commercial use |
-| --- | --- | --- | --- | --- |
-| Free | 100 | delayed ~30 min | no | no |
-| Standard ($24.99/mo) | 10,000 | yes | yes | yes |
-| Professional ($99.99/mo) | 50,000 | yes | yes | yes |
-| Business ($249.99/mo) | 250,000 | yes | yes | yes |
-| Enterprise | custom | yes | yes | yes |
-
-See [pricing](https://mediastack.com/pricing), [FAQ](https://mediastack.com/faq) and [billing overages](https://mediastack.com/billing-overages-documentation). Caveats that affect SDK behavior:
-
-- **Free plan:** news arrive with a ~30-minute delay and historical `date` queries are rejected by the server.
-- **One query may consume more than one quota unit** ([FAQ](https://mediastack.com/faq)) — the SDK never promises "one page = one call".
-- **Overage billing** on paid plans means `usage_limit_reached` is permanent, not transient — it is never retried.
-- Quota notifications fire at 75%, 90%, 100% — watch `client.RateLimit()` or use `WithRateLimitObserver`.
-
-## Concurrency
-
-`Client` is safe for concurrent use by multiple goroutines. Create one per application and share it; the internal limiter (when enabled), the quota snapshot, and the retry policy are all coordinated internally. Every method takes an explicit `context.Context` — the client stores none and starts no background goroutine.
-
-## Using the SDK in a Service
-
-```go
-func run(ctx context.Context) error {
-	client, err := mediastack.NewClientFromEnv(
-		mediastack.WithTimeout(10*time.Second),
-		mediastack.WithRateLimit(1, 1), // be gentle with a monthly quota
-	)
-	if err != nil {
-		return err
-	}
-	defer client.Close()
-
-	tick := time.NewTicker(time.Minute)
-	defer tick.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-tick.C:
-			reqCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-			resp, err := client.News.List(reqCtx, &mediastack.NewsParams{Limit: 5})
-			cancel()
-			if err != nil {
-				if mediastack.IsTemporary(err) {
-					continue // transient — next tick will retry
-				}
-				return err
-			}
-			// process resp.Data...
-		}
-	}
-}
-```
+Mediastack authenticates with an `access_key` query parameter. Keep the key in server-side configuration and use HTTPS. The SDK redacts the key from diagnostic logs and API error details, strips the `Referer` on redirects, and follows redirects within the original scheme and host. Configure any custom transport, proxy or access logger to redact query strings too. See [SECURITY.md](SECURITY.md) and the [endpoint reference](https://docs.apilayer.com/mediastack/docs/mediastack-api-v-1-0-0).
 
 ## Testing
 
-```bash
-go test ./...                          # unit tests, no network needed
-go test -race -count=1 ./...           # with the race detector
-go test -cover ./...                   # coverage (target: >= 90%)
-MEDIASTACK_ACCESS_KEY=... \
-  go test -tags=integration -count=1 ./...   # live API smoke tests
-make check                             # fmt + vet + build + race + lint
+```sh
+go test ./...
+go vet ./...
+go build ./examples/...
 ```
 
-Integration tests skip when the key is missing and treat 429 as a skip, not a failure.
+Most HTTP tests use local test servers. They run without a Mediastack key. To run the optional live tests, set `MEDIASTACK_ACCESS_KEY` and run `go test -tags=integration -run '^TestIntegration' ./...`. The live requests can count toward your quota.
 
-## Security
+Run `go run ./examples/basic` with your key to try the first request. The [examples directory](examples/README.md) also covers filters, manual pagination, historical queries, source lookup and error handling.
 
-- Keep the access key **server-side only** — never in browsers, mobile apps, or public repositories. This is an explicit warning from the vendor documentation as well.
-- The key travels only as the `access_key` query parameter — never in `Authorization` or any other header.
-- The SDK redacts `access_key` from error strings, `%+v` dumps, `APIError.Body`, `APIError.Message` and every log line.
-- If a key leaks, rotate it in the [dashboard](https://mediastack.com/dashboard).
-- `WithBaseURL("http://...")` sends the key unencrypted — use it only for local test servers.
-- Report SDK vulnerabilities via `SECURITY.md`, not public issues.
+## Reference
 
-## Troubleshooting
+The [Go reference](https://pkg.go.dev/github.com/tigusigalpa/mediastack-go) lists all methods, types and constants. The [OpenAPI snapshot](api/openapi.json) documents parameters such as named date presets and `only_with_image`. The SDK accepts both `id` and `code` in source records and exposes them through `Source.ID`. It also reads string and numeric API error envelopes and preserves field-level validation details.
 
-| Symptom | Likely cause | Fix |
-| --- | --- | --- |
-| `401 invalid_access_key` | bad/missing key; or any request with a bad key — auth is checked **before** routing, so even wrong paths return 401 | verify key in [dashboard](https://mediastack.com/dashboard); don't infer "endpoint exists" from status codes |
-| `429 usage_limit_reached` | monthly quota exhausted (permanent for the period) | upgrade plan or wait; not retried |
-| `429 rate_limit_reached` | too many requests per second | retried automatically; or enable `WithRateLimit` |
-| `422 validation_error` on `date` | bad preset/range, or `date` on a plan without history | check `apiErr.Context` for the failing field |
-| `data` comes back empty | filters too narrow; Free plan 30-min delay | relax filters; note live delay on Free |
-| Historical data never arrives | Free plan has no history | paid plan required; server decides, SDK relays `ErrAccessRestricted` |
-| `mediastack: pagination window exceeded` | `offset+limit > 10000` | narrow the query; only first 10k records are reachable |
-| `403 function_access_restricted` | feature not in your plan | check plan features |
+The import path is `github.com/tigusigalpa/mediastack-go`, the package is `mediastack` and the SDK exposes `Tigusigalpa/Mediastack` through `mediastack.Namespace`.
 
-## Examples
-
-Self-contained programs under [`examples/`](examples/README.md): `basic`, `filters`, `pagination`, `historical`, `sources`, `errors`, `ratelimit`. Run with `MEDIASTACK_ACCESS_KEY=... go run ./examples/<name>`.
-
-## Endpoint Documentation
-
-### GET /v1/news — Live News
-
-Returns live and historical news articles from thousands of sources worldwide.
-
-- **Documentation:** https://docs.apilayer.com/mediastack/docs/mediastack-api-v-1-0-0#/API%20Endpoints/getNews
-- **Semantics:** https://docs.apilayer.com/mediastack/docs/api-features#live-news · https://docs.apilayer.com/mediastack/docs/api-features#historical-news
-- **Response schema:** https://docs.apilayer.com/mediastack/docs/mediastack-api-v-1-0-0#/NewsResponse
-- **SDK methods:** `client.News.List`, `client.News.Historical`, `client.News.Iter`, `client.News.Collect`
-- **Response codes:** 200, 401, 403, 404, 422, 429, 500, 503
-
-| Parameter | Type | Required | Default | SDK field |
-| --- | --- | --- | --- | --- |
-| `access_key` | string | yes | — | client constructor arg |
-| `sources` | string (csv, `-` excludes) | no | — | `Sources Filter[string]` |
-| `categories` | string (csv, `-` excludes) | no | — | `Categories Filter[Category]` |
-| `countries` | string (csv, `-` excludes) | no | — | `Countries Filter[Country]` |
-| `languages` | string (csv, `-` excludes) | no | — | `Languages Filter[Language]` |
-| `keywords` | string (csv, `-` excludes) | no | — | `Keywords Filter[string]` |
-| `date` | string | no | — | `Date DateFilter` |
-| `sort` | string | no | `published_desc` | `Sort SortOrder` |
-| `only_with_image` | boolean | no | `false` | `OnlyWithImage *bool` |
-| `limit` | integer 1–100 | no | `25` | `Limit int` |
-| `offset` | integer ≥ 0 | no | `0` | `Offset int` |
-
-### GET /v1/sources — News Sources
-
-Searches and filters news sources and their metadata.
-
-- **Documentation:** https://docs.apilayer.com/mediastack/docs/mediastack-api-v-1-0-0#/API%20Endpoints/getSources
-- **Semantics:** https://docs.apilayer.com/mediastack/docs/api-features#news-sources
-- **Response schema:** https://docs.apilayer.com/mediastack/docs/mediastack-api-v-1-0-0#/SourceResponse
-- **SDK methods:** `client.Sources.List`, `client.Sources.Search`, `client.Sources.Iter`
-- **Response codes:** 200, 401, 403, 404, 422, 429, 500, 503
-
-| Parameter | Type | Required | Default | SDK field |
-| --- | --- | --- | --- | --- |
-| `access_key` | string | yes | — | client constructor arg |
-| `search` | string | **yes** | — | `Search string` |
-| `categories` | string (csv) | no | — | `Categories Filter[Category]` |
-| `countries` | string (csv) | no | — | `Countries Filter[Country]` |
-| `languages` | string (csv) | no | — | `Languages Filter[Language]` |
-| `limit` | integer 1–100 | no | `25` | `Limit int` |
-| `offset` | integer ≥ 0 | no | `0` | `Offset int` |
-
-### Response Schemas
-
-- `Article`: https://docs.apilayer.com/mediastack/docs/mediastack-api-v-1-0-0#/Article
-- `Source`: https://docs.apilayer.com/mediastack/docs/mediastack-api-v-1-0-0#/Source
-- `Pagination`: https://docs.apilayer.com/mediastack/docs/mediastack-api-v-1-0-0#/Pagination
-- `ApiError` / `ApiError_error`: https://docs.apilayer.com/mediastack/docs/mediastack-api-v-1-0-0#/ApiError · https://docs.apilayer.com/mediastack/docs/mediastack-api-v-1-0-0#/ApiError_error
-
-### More documentation
-
-- API overview: https://docs.apilayer.com/mediastack/docs/api-documentation
-- Quickstart: https://docs.apilayer.com/mediastack/docs/quickstart-guide
-- Getting started (auth, HTTPS, errors): https://docs.apilayer.com/mediastack/docs/getting-started
-- Options (filters): https://docs.apilayer.com/mediastack/docs/options
-- Code examples: https://docs.apilayer.com/mediastack/docs/code-examples
-- Playground: https://docs.apilayer.com/mediastack/docs/playground
-- Sources & countries list: https://mediastack.com/sources
-- Status page: https://status.mediastack.com
-- APILayer product page: https://apilayer.com/marketplace/mediastack-api
-- Official OpenAPI contract (snapshot): [`api/openapi.json`](api/openapi.json) · live: `docs.apilayer.com/services/api/published-definition?...`
-
-## Namespace & Identity
-
-Go has no `namespace` keyword like PHP or C#. The public identity **Tigusigalpa/Mediastack** is expressed in three consistent ways:
-
-1. The `mediastack.Namespace` constant (`"Tigusigalpa/Mediastack"`), next to `ModulePath`, `DefaultBaseURL`, `APIVersion`.
-2. Documentation — this README, `doc.go`, and the license header.
-3. The module path `github.com/tigusigalpa/mediastack-go` with package name `mediastack` (lowercase, single word — Go convention), used as `mediastack.NewClient(...)`.
-
-## Documentation Discrepancies
-
-The vendor documentation is internally inconsistent in several places, verified against the live API and the official OpenAPI contract. The SDK resolves each as follows (and there is a test for every one):
-
-1. **Three error formats.** Live responses use `{"error":{"code":"type","message":...}}` (string code), the OpenAPI contract documents `{"success":false,"error":{"code":101,"type":"...","info":...}}` (numeric code), and 422s add a `context` map. `decodeAPIError` accepts all three; `APIError.Code` prefers `type`, falls back to string `code`, then to unambiguous numeric mapping, then to the HTTP status.
-2. **Ambiguous numeric codes.** `104` covers `api_access_blocked`, `usage_limit_reached`, `daily_usage_limit_reached`, `fair_use_limit_reached`; `101` covers missing *and* invalid key; `105` covers two restrictions. The SDK never maps ambiguous numbers to a `Code`.
-3. **`politics` category.** Present on the API Features page, absent from OpenAPI. Exposed as `CategoryPolitics` and included in `Categories()`; the client does not block it.
-4. **Swedish: `se` vs `sv`.** The Options page lists `se` (the country code for Sweden); the correct language code is `sv` per API Features. `LanguageSwedish = "sv"`, plus `LanguageSwedishLegacy = "se"` for compatibility.
-5. **Hindi `hi`.** Listed on API Features but missing from Options, which documents 13 languages and `hi` would make 14. `LanguageHindi` exists but is kept out of the canonical `Languages()` list.
-6. **Source id: `id` vs `code`.** OpenAPI says `code`, live responses and examples use `id`. `Source.UnmarshalJSON` reads both into a single `ID` field — there is no separate `Code` field to confuse callers.
-7. **`search` on `/v1/sources`.** Required per OpenAPI and API Features ("the request is rejected without it"). The SDK enforces it client-side (`ErrMissingSearch`) to save the wasted quota.
-8. **`only_with_image`.** In OpenAPI but absent from API Features/Options pages. Implemented as a full typed parameter.
-9. **`HEAD` unsupported.** `HEAD /v1/news` returns a Cloudflare 403 HTML page — the SDK only issues `GET`.
-10. **Brotli responses.** The server may answer `br`-encoded if asked; the SDK never sends `Accept-Encoding: br` (Go's transport handles gzip automatically, not brotli).
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md). In short: `make check` must pass, new behavior needs a failing test first, exported symbols need godoc, commits follow Conventional Commits.
-
-## License
-
-[MIT](LICENSE) — Copyright (c) 2026 Igor Sazonov ([tigusigalpa](https://github.com/tigusigalpa), sovletig@gmail.com).
-
-## Disclaimer
-
-This is an **unofficial** SDK maintained independently of [APILayer](https://apilayer.com) / Mediastack. "Mediastack" is a product name of APILayer; this repository provides a Go client for its public API and is not endorsed by or affiliated with the vendor.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development workflow and the [changelog](CHANGELOG.md) for release history. Mediastack Go is independently maintained and published under the [MIT license](LICENSE).

@@ -3,6 +3,7 @@ package mediastack
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"net/url"
 	"strconv"
 	"strings"
@@ -112,9 +113,9 @@ type NewsParams struct {
 	// &false send the parameter explicitly.
 	OnlyWithImage *bool
 
-	// Extra is merged into the query string last and overrides every
-	// computed value. It is an escape hatch for parameters the SDK does
-	// not yet model.
+	// Extra supplies raw query parameters and can override computed values.
+	// The client always supplies access_key. Iter and Collect advance
+	// offset from the initial value, and Collect sets its own page size.
 	Extra url.Values
 }
 
@@ -144,8 +145,9 @@ type SourceParams struct {
 	// not exceed MaxPaginationWindow (10,000).
 	Offset int
 
-	// Extra is merged into the query string last and overrides every
-	// computed value.
+	// Extra supplies raw query parameters and can override computed values.
+	// The client always supplies access_key. Iter advances offset from
+	// the initial value.
 	Extra url.Values
 }
 
@@ -308,27 +310,12 @@ func (p *NewsParams) encode(strict bool) (url.Values, error) {
 	} else if p.Sort != "" {
 		v.Set("sort", string(p.Sort))
 	}
-	validatePage(ve, p.Limit, p.Offset)
 
 	if p.OnlyWithImage != nil {
 		v.Set("only_with_image", strconv.FormatBool(*p.OnlyWithImage))
 	}
 
-	if err := ve.err(); err != nil {
-		return nil, err
-	}
-	if err := checkWindow(p.Limit, p.Offset); err != nil {
-		return nil, err
-	}
-
-	if p.Limit > 0 {
-		v.Set("limit", strconv.Itoa(p.Limit))
-	}
-	if p.Offset > 0 {
-		v.Set("offset", strconv.Itoa(p.Offset))
-	}
-	mergeExtra(v, p.Extra)
-	return v, nil
+	return encodePageParams(v, ve, p.Limit, p.Offset, p.Extra)
 }
 
 // encode renders SourceParams into query values. A missing Search term
@@ -353,23 +340,60 @@ func (p *SourceParams) encode(strict bool) (url.Values, error) {
 		strictCountryCheck(ve, "countries", p.Countries)
 	}
 
-	validatePage(ve, p.Limit, p.Offset)
+	return encodePageParams(v, ve, p.Limit, p.Offset, p.Extra)
+}
 
+func encodePageParams(v url.Values, ve *ValidationError, limit, offset int, extra url.Values) (url.Values, error) {
+	limit = pageOverride(ve, extra, "limit", limit)
+	offset = pageOverride(ve, extra, "offset", offset)
+	validatePage(ve, limit, offset)
 	if err := ve.err(); err != nil {
 		return nil, err
 	}
-	if err := checkWindow(p.Limit, p.Offset); err != nil {
+	if err := checkWindow(limit, offset); err != nil {
 		return nil, err
 	}
-
-	if p.Limit > 0 {
-		v.Set("limit", strconv.Itoa(p.Limit))
+	mergeExtra(v, extra)
+	if limit > 0 {
+		v.Set("limit", strconv.Itoa(limit))
 	}
-	if p.Offset > 0 {
-		v.Set("offset", strconv.Itoa(p.Offset))
+	if offset > 0 || len(extra["offset"]) > 0 {
+		v.Set("offset", strconv.Itoa(offset))
 	}
-	mergeExtra(v, p.Extra)
 	return v, nil
+}
+
+func pageOverride(ve *ValidationError, extra url.Values, field string, fallback int) int {
+	values := extra[field]
+	if len(values) == 0 {
+		return fallback
+	}
+	value, err := strconv.Atoi(values[0])
+	if len(values) != 1 || err != nil {
+		ve.add(field, "must be a single integer")
+		return fallback
+	}
+	if field == "limit" && value == 0 {
+		ve.add(field, "must be positive when explicitly supplied")
+	}
+	return value
+}
+
+// startPaging moves raw paging overrides into the fields the iterator advances.
+func startPaging(limit, offset *int, extra *url.Values) error {
+	if len((*extra)["limit"]) == 0 && len((*extra)["offset"]) == 0 {
+		return nil
+	}
+	ve := &ValidationError{}
+	*limit = pageOverride(ve, *extra, "limit", *limit)
+	*offset = pageOverride(ve, *extra, "offset", *offset)
+	if err := ve.err(); err != nil {
+		return err
+	}
+	*extra = maps.Clone(*extra)
+	extra.Del("limit")
+	extra.Del("offset")
+	return nil
 }
 
 // validatePage checks limit and offset bounds shared by both endpoints.
@@ -389,9 +413,9 @@ func checkWindow(limit, offset int) error {
 	if eff <= 0 {
 		eff = DefaultLimit
 	}
-	if sum := offset + eff; sum > MaxPaginationWindow {
-		return fmt.Errorf("%w: offset+limit must not exceed %d, got %d",
-			ErrMaxOffset, MaxPaginationWindow, sum)
+	if offset > MaxPaginationWindow-eff {
+		return fmt.Errorf("%w: offset %d with limit %d exceeds %d",
+			ErrMaxOffset, offset, eff, MaxPaginationWindow)
 	}
 	return nil
 }

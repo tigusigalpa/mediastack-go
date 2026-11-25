@@ -2,6 +2,7 @@ package mediastack
 
 import (
 	"context"
+	"math"
 	"net/http"
 	"strconv"
 	"sync"
@@ -82,6 +83,9 @@ func newLimiter(rate float64, burst int, now func() time.Time, sleep func(contex
 // wait blocks until a token is available or ctx is done.
 func (l *limiter) wait(ctx context.Context) error {
 	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		l.mu.Lock()
 		now := l.now()
 		if elapsed := now.Sub(l.last).Seconds(); elapsed > 0 {
@@ -99,7 +103,11 @@ func (l *limiter) wait(ctx context.Context) error {
 		deficit := 1 - l.tokens
 		l.mu.Unlock()
 
-		d := time.Duration(deficit / l.rate * float64(time.Second))
+		nanos := math.Ceil(deficit / l.rate * float64(time.Second))
+		d := time.Duration(math.MaxInt64)
+		if nanos < float64(d) {
+			d = time.Duration(nanos)
+		}
 		if err := l.sleep(ctx, d); err != nil {
 			return err
 		}

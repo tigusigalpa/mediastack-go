@@ -13,13 +13,12 @@ import (
 )
 
 func serveError(t *testing.T, status int, fixtureName string) *Client {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	hc := handlerTransport(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(status)
 		w.Write(fixture(t, fixtureName))
-	}))
-	t.Cleanup(srv.Close)
-	c, err := NewClient("k", WithBaseURL(srv.URL), WithNoRetry())
+	})
+	c, err := NewClient("k", WithHTTPClient(hc), WithNoRetry())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +186,7 @@ func TestErrorStringFormat(t *testing.T) {
 func TestAPIErrorNeverLeaksKey(t *testing.T) {
 	key := "key-12345-secret"
 	body := []byte(`{"error":{"code":"invalid_access_key","message":"bad key access_key=` + key + `"}}`)
-	ae := decodeAPIError(401, http.Header{}, body)
+	ae := decodeAPIError(401, "", body, key)
 	if strings.Contains(ae.Error(), key) {
 		t.Fatalf("key in Error(): %s", ae.Error())
 	}
@@ -247,12 +246,12 @@ func TestSentinelFor(t *testing.T) {
 func TestNumericCodeFallback(t *testing.T) {
 	// Numeric code with no type: unambiguous numbers map, ambiguous do not.
 	body := []byte(`{"success":false,"error":{"code":103,"info":"bad function"}}`)
-	ae := decodeAPIError(404, http.Header{}, body)
+	ae := decodeAPIError(404, "", body, "")
 	if ae.Code != "invalid_api_function" || ae.NumericCode != 103 {
 		t.Fatalf("Code=%q NumericCode=%d", ae.Code, ae.NumericCode)
 	}
 	body = []byte(`{"success":false,"error":{"code":101,"info":"bad key"}}`)
-	ae = decodeAPIError(401, http.Header{}, body)
+	ae = decodeAPIError(401, "", body, "")
 	if ae.Code != "" {
 		t.Fatalf("ambiguous 101 must leave Code empty, got %q", ae.Code)
 	}
@@ -260,9 +259,17 @@ func TestNumericCodeFallback(t *testing.T) {
 		t.Fatal("empty Code on 401 must still map via status")
 	}
 	body = []byte(`{"success":false,"error":{"code":104,"type":"usage_limit_reached","info":"quota"}}`)
-	ae = decodeAPIError(429, http.Header{}, body)
+	ae = decodeAPIError(429, "", body, "")
 	if ae.Code != "usage_limit_reached" || ae.NumericCode != 104 {
 		t.Fatalf("Code=%q", ae.Code)
+	}
+}
+
+func TestAmbiguousNumericQuotaError(t *testing.T) {
+	body := []byte(`{"error":{"code":104,"info":"usage limit exceeded"}}`)
+	err := decodeAPIError(http.StatusTooManyRequests, "", body, "")
+	if !errors.Is(err, ErrUsageLimitReached) || IsTemporary(err) {
+		t.Fatalf("want a permanent usage limit error, got %v", err)
 	}
 }
 
