@@ -33,11 +33,15 @@ jobs:
       - run: go mod download
 
       - name: gofmt
+        shell: pwsh
         run: |
-          unformatted=$(gofmt -l .)
-          if [ -n "$unformatted" ]; then
-            echo "unformatted files:"; echo "$unformatted"; exit 1
-          fi
+          $unformatted = @(gofmt -l .)
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($unformatted.Count -gt 0) {
+            Write-Output "unformatted files:"
+            Write-Output $unformatted
+            exit 1
+          }
 
       - run: go vet ./...
 
